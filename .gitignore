@@ -16,7 +16,7 @@ venv/
 env/
 ENV/
 
-# Herramientas de tests / cobertura
+# Tests / cobertura
 .pytest_cache/
 .coverage
 htmlcov/
@@ -25,15 +25,15 @@ htmlcov/
 .pyre/
 
 # =====================
-# Archivos de configuración sensibles
+# Configuración sensible
 # =====================
 
-# Nunca subir variables reales
+# Variables de entorno reales
 .env
 *.env.local
 .env.*.local
 
-# Si usas docker-compose.override.yml con credenciales locales
+# docker-compose local extra
 docker-compose.override.yml
 
 # Dumps de bases de datos
@@ -42,30 +42,24 @@ docker-compose.override.yml
 *.dump
 *.backup
 
-# =====================
-# Datos locales de bases de datos
-# (volúmenes montados en Docker o carpetas de dev)
-# =====================
-
-# Ejemplos de nombres que has usado/puedes usar
-db/data/
+# Volúmenes de BD locales
 mysql_data/
 postgres_data/
+db/data/
 data/
 tmp/
 logs/
+
+# Scripts de utilidades locales
+app/tools/
+# (si en algún momento quieres versionar parte de tools, puedes
+# cambiar esto por: app/tools/generate_jwt_secret.py)
 
 # =====================
 # Editor / IDE / SO
 # =====================
 
-# VSCode
 .vscode/
-.history/
-
-# PyCharm / IntelliJ
 .idea/
-
-# Otros
 .DS_Store
 Thumbs.db

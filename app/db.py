@@ -5,11 +5,21 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
 
+
+def _get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
-DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME = os.getenv("DB_NAME", "db_lsg")
+
+# Estos tres son obligatorios (no se dejan “codificados”)
+DB_USER = _get_required_env("DB_USER")
+DB_PASSWORD = _get_required_env("DB_PASSWORD")
+DB_NAME = _get_required_env("DB_NAME")
 
 # mysql+mysqlconnector usa el driver de mysql-connector-python
 DATABASE_URL = (

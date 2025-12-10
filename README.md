@@ -1,21 +1,25 @@
 # Estructura del proyecto
 
-```
+```text
 lsg-auth/
 │
 ├── app/
+│   ├── tools/
+│   │   └── generate_jwt_secret.py   # script local, ignorado por git
 │   ├── __init__.py
-│   ├── main.py
-│   ├── db.py
-│   ├── models.py
-│   ├── schemas.py
-│   ├── auth.py
-│   └── cli_create_user.py
+│   ├── auth.py                      # bcrypt + JWT
+│   ├── cli_create_user.py           # CLI para crear jugadores
+│   ├── db.py                        # conexión SQLAlchemy a MySQL (env)
+│   ├── main.py                      # FastAPI: /health, /players, /login, /whoami
+│   ├── models.py                    # ORM Player
+│   └── schemas.py                   # Pydantic schemas
 │
-├── requirements.txt
+├── .env.example                     # plantilla sin credenciales
+├── .gitignore
+├── docker-compose.yml               # opcional para MySQL local
 ├── Dockerfile
-├── docker-compose.yml
-└── .env.example
+├── README.md
+└── requirements.txt
 ```
 
 ## Esquema equivalente para PostgreSQL
