@@ -5,3 +5,5 @@ mysql-connector-python
 bcrypt
 python-dotenv
 python-jose[cryptography]
+pydantic[email]
+python-multipart

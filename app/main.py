@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -71,24 +71,27 @@ def create_player(
 
 @app.post("/login", response_model=schemas.Token)
 def login(
-    creds: schemas.PlayerLogin,
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    """
+    Login OAuth2: Swagger enviará username+password como formulario.
+    Usamos username como si fuera el email del jugador.
+    """
+    # En este diseño, username == email
     player = (
         db.query(models.Player)
-        .filter(models.Player.email == creds.email)
+        .filter(models.Player.email == form_data.username)
         .first()
     )
 
-    if not player or not verify_password(creds.password, player.password_hash):
+    if not player or not verify_password(form_data.password, player.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas.",
         )
 
-    # sub = subject del token -> id del jugador
     access_token = create_access_token({"sub": str(player.id_players)})
-
     return schemas.Token(access_token=access_token, token_type="bearer")
 
 
