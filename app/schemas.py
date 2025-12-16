@@ -7,7 +7,7 @@ class PlayerCreate(BaseModel):
     email: EmailStr
     password: str
     age: Optional[int] = None
-
+    role: Optional[str] = "player"
 
 class PlayerLogin(BaseModel):
     email: EmailStr
@@ -19,7 +19,7 @@ class PlayerOut(BaseModel):
     name: str
     email: EmailStr
     age: Optional[int] = None
-
+    role: Optional[str] = "player"
     class Config:
         orm_mode = True
 

@@ -17,6 +17,7 @@ def create_player_cli(name: str, email: str, password: str, age: int | None):
             email=email,
             password_hash=hash_password(password),
             age=age,
+            role="player",
         )
         db.add(player)
         db.commit()
@@ -35,6 +36,7 @@ def main():
     parser.add_argument("--email", required=True, help="Email del jugador")
     parser.add_argument("--password", required=True, help="Contraseña en texto plano")
     parser.add_argument("--age", type=int, default=None, help="Edad (opcional)")
+    parser.add_argument("--role", type=str, default="player", help="Role (opcional)")
 
     args = parser.parse_args()
 
@@ -43,6 +45,7 @@ def main():
         email=args.email,
         password=args.password,
         age=args.age,
+        role=args.role,
     )
 
 

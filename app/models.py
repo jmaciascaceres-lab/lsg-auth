@@ -10,6 +10,7 @@ class Player(Base):
     password_hash = Column(String(95), nullable=False)
     email = Column(String(128), nullable=False, unique=True, index=True)
     age = Column(Integer, nullable=True)
+    role = Column(String(16), nullable=False)
     external_type = Column(String(16), nullable=True)
     external_id = Column(Integer, nullable=True)
     updated_at = Column(

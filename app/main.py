@@ -55,6 +55,7 @@ def create_player(
         email=player_in.email,
         password_hash=pw_hash,
         age=player_in.age,
+        role=player_in.role,
     )
 
     db.add(player)
