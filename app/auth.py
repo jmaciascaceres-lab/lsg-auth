@@ -16,8 +16,12 @@ def _get_required_env(name: str) -> str:
 
 
 # Estos valores SOLO vienen de variables de entorno
-JWT_SECRET_KEY = _get_required_env("JWT_SECRET_KEY")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_SECRET_KEY = os.getenv("AUTH_JWT_SECRET") or os.getenv("AUTH_JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    raise RuntimeError("Missing required environment variable: AUTH_JWT_SECRET")
+JWT_ISSUER = os.getenv("AUTH_JWT_ISSUER")
+JWT_AUDIENCE = os.getenv("AUTH_JWT_AUDIENCE")
+AUTH_JWT_ALGORITHM = os.getenv("AUTH_JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
 
@@ -56,7 +60,12 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
 
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    if JWT_ISSUER:
+        to_encode["iss"] = JWT_ISSUER
+    if JWT_AUDIENCE:
+        to_encode["aud"] = JWT_AUDIENCE
+
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=AUTH_JWT_ALGORITHM)
     return encoded_jwt
 
 
@@ -65,7 +74,7 @@ def decode_access_token(token: str) -> dict:
     Decodifica y valida un JWT. Lanza JWTError si no es válido.
     """
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[AUTH_JWT_ALGORITHM])
         return payload
     except JWTError as exc:
         raise exc

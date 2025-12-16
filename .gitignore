@@ -11,10 +11,10 @@ __pycache__/
 *.db
 
 # Entornos virtuales
-.venv/
-venv/
-env/
-ENV/
+#.venv/
+#venv/
+#env/
+#ENV/
 
 # Tests / cobertura
 .pytest_cache/
@@ -29,10 +29,10 @@ htmlcov/
 # =====================
 
 # Variables de entorno reales
-.env
-.env.example
-*.env.local
-.env.*.local
+#.env
+#.env.example
+#*.env.local
+#.env.*.local
 
 # docker-compose local extra
 docker-compose.override.yml
