@@ -7,7 +7,10 @@ from .db import Base, engine, get_db
 from . import models, schemas
 from .auth import hash_password, verify_password, create_access_token, decode_access_token
 
-app = FastAPI(title="LSG Auth Service (MySQL)")
+app = FastAPI(
+    title="LifeSync-Games Auth Service",
+    version="1.0.0",
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 

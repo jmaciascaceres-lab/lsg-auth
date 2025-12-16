@@ -1,36 +1,25 @@
 version: "3.9"
 
 services:
-  db:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_NAME:-db_lsg}
-
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
-    command: --default-authentication-plugin=mysql_native_password
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-
   app:
     build: .
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      - lsg_shared
     environment:
-      - DB_HOST=db
+      - DB_HOST=lsg_db
       - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=${DB_PASSWORD:-root}
-      - DB_NAME=${DB_NAME:-db_lsg}
-    depends_on:
-      - db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --root-path /lsg-auth
     volumes:
       - .:/app
 
-volumes:
-  mysql_data:
+networks:
+  lsg_shared:
+    external: true
