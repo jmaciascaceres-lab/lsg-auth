@@ -7,9 +7,28 @@ from .db import Base, engine, get_db
 from . import models, schemas
 from .auth import hash_password, verify_password, create_access_token, decode_access_token
 
+AUTH_DOCS_DESCRIPTION = """
+## Flujo de uso (Auth → Token)
+
+1. **Crear usuario** (si no tienes uno):
+   - `POST /players`
+
+2. **Obtener token JWT**:
+   - `POST /login`
+   - Copia `access_token`
+
+3. **Probar token** (opcional):
+   - `GET /whoami` (requiere `Authorization: Bearer <token>`)
+
+## Vigencia del token
+- El JWT expira según `JWT_EXPIRE_MINUTES` (por defecto **60 minutos**).
+"""
+
 app = FastAPI(
     title="LifeSync-Games Auth Service",
-    version="1.0.0",
+    version="1.0.1",
+    description=AUTH_DOCS_DESCRIPTION,
+    root_path=os.getenv("LSG_AUTH_ROOT_PATH", "/lsg-auth"),
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
