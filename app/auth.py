@@ -71,10 +71,16 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 def decode_access_token(token: str) -> dict:
     """
-    Decodifica y valida un JWT. Lanza JWTError si no es válido.
+    Decodifica y valida un JWT (alg + exp + opcional iss/aud).
     """
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[AUTH_JWT_ALGORITHM])
-        return payload
-    except JWTError as exc:
-        raise exc
+    options = {"verify_aud": JWT_AUDIENCE is not None}
+    payload = jwt.decode(
+        token,
+        JWT_SECRET_KEY,
+        algorithms=[AUTH_JWT_ALGORITHM],
+        issuer=JWT_ISSUER,
+        audience=JWT_AUDIENCE,
+        options=options,
+    )
+    return payload
+

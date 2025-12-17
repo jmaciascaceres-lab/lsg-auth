@@ -95,7 +95,14 @@ def login(
             detail="Credenciales inválidas.",
         )
 
-    access_token = create_access_token({"sub": str(player.id_players)})
+    claims = {
+        "sub": str(player.id_players),
+        "player_id": int(player.id_players),
+        "email": player.email,
+        "role": player.role,           # <- CRÍTICO
+        "type": "user",
+    }
+    access_token = create_access_token(claims)
     return schemas.Token(access_token=access_token, token_type="bearer")
 
 
