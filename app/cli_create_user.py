@@ -6,7 +6,7 @@ from . import models
 from .auth import hash_password
 
 
-def create_player_cli(name: str, email: str, password: str, age: int | None):
+def create_player_cli(name: str, email: str, password: str, age: int | None, role: str):
     # Asegurar que la tabla exista
     Base.metadata.create_all(bind=engine)
 
@@ -17,7 +17,7 @@ def create_player_cli(name: str, email: str, password: str, age: int | None):
             email=email,
             password_hash=hash_password(password),
             age=age,
-            role="player",
+            role=role,
         )
         db.add(player)
         db.commit()
@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--email", required=True, help="Email del jugador")
     parser.add_argument("--password", required=True, help="Contraseña en texto plano")
     parser.add_argument("--age", type=int, default=None, help="Edad (opcional)")
-    parser.add_argument("--role", type=str, default="player", help="Role (opcional)")
+    parser.add_argument("--role", type=str, default="player", help="Role (opcional)")   # <- CRÍTICO
 
     args = parser.parse_args()
 
