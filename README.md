@@ -45,7 +45,7 @@ lsg-auth/
 | Método | Ruta | Rol requerido | Descripción |
 |--------|------|---------------|-------------|
 | `GET`  | `/health` | — | Healthcheck + SELECT 1 en BD |
-| `POST` | `/login`  | — | Login OAuth2 → JWT (10 min) |
+| `POST` | `/login`  | — | Login OAuth2 → JWT (120 min) |
 | `GET`  | `/whoami` | cualquiera | Perfil + roles del token activo |
 | `GET`  | `/token/remaining` | cualquiera | Segundos restantes del JWT |
 | `POST` | `/players` | `admin` | Crear jugador con rol inicial |
@@ -113,7 +113,7 @@ AUTH_JWT_SECRET=VALOR_LARGO_Y_ALEATORIO_GENERADO
 AUTH_JWT_ALGORITHM=HS256
 AUTH_JWT_ISSUER=lsg-auth
 AUTH_JWT_AUDIENCE=lsg-core-api
-JWT_EXPIRE_MINUTES=10
+JWT_EXPIRE_MINUTES=120
 
 # ── Guards ─────────────────────────────────────────────────────────────────────
 # false en producción SIEMPRE
@@ -232,7 +232,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    → {"expires_in_seconds": 487, "expires_at": "2026-05-06T15:23:41Z"}
 
 3. Usar token en lsg-core-api-prod:
-   Authorization: Bearer <token>  (válido 10 minutos)
+   Authorization: Bearer <token>  (válido 120 minutos)
 
 4. Gestión de roles (admin):
    PATCH /admin/players/46/roles
@@ -248,7 +248,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Sistema de roles multi-rol (`player_roles`): un jugador puede tener N roles activos.
 - JWT emite `"roles": [...]` (lista) en lugar de `"role": "..."` (string).  
   Compatibilidad backward: `security.py` de `lsg-core-api-prod` acepta ambos formatos.
-- `JWT_EXPIRE_MINUTES` reducido de 60 a **10 minutos**.
+- `JWT_EXPIRE_MINUTES` aumentado de 10 a **120 minutos**.
 - Nuevo endpoint `GET /token/remaining`.
 - Nuevo endpoint `PATCH /admin/players/{id}/roles` (grant/revoke).
 - Creación de usuarios (`POST /players`) restringida a rol `admin`.

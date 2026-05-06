@@ -39,7 +39,7 @@ AUTH_DOCS_DESCRIPTION = """
    - `PATCH /admin/players/{player_id}/roles`
 
 ## Vigencia del token
-- El JWT expira según `JWT_EXPIRE_MINUTES` (por defecto **10 minutos**).
+- El JWT expira según `JWT_EXPIRE_MINUTES` (por defecto **120 minutos**).
 - Los roles se leen de la tabla `player_roles` en cada login.
 
 Fuente:

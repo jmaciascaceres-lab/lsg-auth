@@ -23,7 +23,7 @@ if not JWT_SECRET_KEY:
 JWT_ISSUER         = os.getenv("AUTH_JWT_ISSUER")
 JWT_AUDIENCE       = os.getenv("AUTH_JWT_AUDIENCE")
 AUTH_JWT_ALGORITHM = os.getenv("AUTH_JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10"))
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
 
 
 def hash_password(plain_password: str) -> str:
