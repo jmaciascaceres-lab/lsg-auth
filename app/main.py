@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -308,3 +308,66 @@ def manage_player_role(
         role      = body.role,
         action    = body.action,
     )
+
+
+class RoleHistory(BaseModel):
+    """Registro histórico de un rol (activo o revocado)."""
+    id_player_role: int
+    role:           str
+    assigned_at:    Optional[datetime]
+    assigned_by:    Optional[int]
+    revoked_at:     Optional[datetime]
+    is_active:      bool   # True si revoked_at IS NULL
+
+@app.get(
+    "/admin/players/{player_id}/roles",
+    response_model=List[RoleHistory],
+    tags=["admin"],
+    summary="Historial de roles de un jugador (solo admin)",
+)
+def get_player_roles(
+    player_id: int,
+    include_revoked: bool = True,
+    db: Session = Depends(get_db),
+    _: models.Player = Depends(require_roles(["admin"])),
+):
+    """
+    Devuelve el historial completo de roles de un jugador.
+
+    - `include_revoked=true` (default): incluye roles activos e históricos.
+    - `include_revoked=false`: solo roles activos (`revoked_at IS NULL`).
+
+    Útil para auditoría de cambios de rol y para verificar el estado actual.
+
+    cURL de ejemplo:
+    ```bash
+    # Roles activos de jugador 26
+    curl -X GET '/lsg-auth/admin/players/26/roles?include_revoked=false' \\
+      -H 'Authorization: Bearer <TOKEN_ADMIN>'
+
+    # Historial completo (activos + revocados)
+    curl -X GET '/lsg-auth/admin/players/26/roles' \\
+      -H 'Authorization: Bearer <TOKEN_ADMIN>'
+    ```
+    """
+    target = db.query(models.Player).filter(
+        models.Player.id_players == player_id
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado.")
+
+    roles = target._roles
+    if not include_revoked:
+        roles = [r for r in roles if r.revoked_at is None]
+
+    return [
+        RoleHistory(
+            id_player_role = pr.id_player_role,
+            role           = pr.role,
+            assigned_at    = pr.assigned_at,
+            assigned_by    = pr.assigned_by,
+            revoked_at     = pr.revoked_at,
+            is_active      = pr.revoked_at is None,
+        )
+        for pr in sorted(roles, key=lambda r: r.assigned_at or datetime.min, reverse=True)
+    ]
