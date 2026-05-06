@@ -1,26 +1,42 @@
 version: "3.9"
 
+networks:
+  lsg_shared:
+    external: true
+
 services:
   app:
     build: .
+    container_name: lsg_auth
     restart: unless-stopped
     env_file:
       - .env
     networks:
       - lsg_shared
     environment:
-      - DB_HOST=lsg_db
-      - DB_PORT=3306
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}
+      DB_HOST: lsg_db
+      DB_PORT: "3306"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      # JWT
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      AUTH_JWT_ALGORITHM: ${AUTH_JWT_ALGORITHM:-HS256}
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-lsg-auth}
+      AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-lsg-core-api}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10}
+
+      # Guards
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+
     ports:
       - "8001:8000"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --root-path /lsg-auth
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --proxy-headers
+      --root-path /lsg-auth
     volumes:
       - .:/app
-
-networks:
-  lsg_shared:
-    external: true
