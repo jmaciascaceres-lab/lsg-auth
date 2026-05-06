@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -245,6 +245,58 @@ def token_remaining(token: str = Depends(oauth2_scheme)):
         )
     return get_token_remaining(payload)
 
+
+@app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
+def refresh_token(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    """
+    Renueva el token JWT sin necesidad de hacer login de nuevo.
+ 
+    El token actual debe ser válido (no expirado).
+    Retorna un nuevo token con los roles actualizados desde `player_roles`.
+ 
+    Ideal para mantener sesión activa durante el uso prolongado del Swagger
+    o en mods de videojuego que necesitan refrescar el token automáticamente.
+ 
+    **Nota:** Si el token ya expiró, usar POST /login.
+    """
+    import time
+ 
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Token inválido o expirado. Usa POST /login para obtener uno nuevo.",
+        )
+ 
+    # Verificar que queden al menos 30 segundos (anti-spam)
+    remaining = payload.get("exp", 0) - int(time.time())
+    if remaining > 30:
+        # Token aún vigente — renovar de todas formas (roles pueden haber cambiado)
+        pass
+ 
+    player_id = int(payload.get("sub", 0))
+    player = db.query(models.Player).filter(
+        models.Player.id_players == player_id
+    ).first()
+    if not player:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado.")
+ 
+    # Leer roles ACTUALIZADOS desde player_roles (pueden haber cambiado desde el login)
+    active_roles = player.roles
+ 
+    new_token = create_access_token({
+        "sub":       str(player.id_players),
+        "player_id": player.id_players,
+        "email":     player.email,
+        "roles":     active_roles,
+        "type":      "user",
+    })
+    return schemas.Token(access_token=new_token, token_type="bearer")
+ 
 
 @app.get("/whoami", response_model=schemas.PlayerOut, tags=["auth"])
 def whoami(current_player: models.Player = Depends(get_current_player)):
