@@ -6,8 +6,10 @@ VALID_ROLES = {"player", "teacher", "researcher", "admin"}
 
 class PlayerCreate(BaseModel):
     """
-    Usado por POST /players (solo admin).
+    Usado por POST /players.
     El campo 'role' especifica el rol inicial que se inserta en player_roles.
+
+    **Roles disponibles:** "admin"
     """
     name:     str
     email:    EmailStr
@@ -33,7 +35,6 @@ class PlayerLogin(BaseModel):
 class PlayerOut(BaseModel):
     """
     Respuesta de endpoints que devuelven datos de un jugador.
-    CAMBIO: 'role' (str singular) → 'roles' (List[str]).
     from_attributes=True permite que Pydantic lea player.roles (property).
     """
     model_config = ConfigDict(from_attributes=True)

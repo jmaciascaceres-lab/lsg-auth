@@ -69,7 +69,6 @@ def get_current_player(
 ) -> models.Player:
     """
     Valida el JWT y retorna el Player correspondiente.
-    NOTA: Ya no lee 'role' desde players (columna eliminada en PATCH-01).
     Los roles vienen de player_roles a través de player.roles (property).
     """
     try:
@@ -126,7 +125,7 @@ def require_roles(allowed: List[str]):
 
 @app.get("/health")
 def healthcheck(db: Session = Depends(get_db)):
-    """Healthcheck: SELECT 1 en MySQL."""
+    """Healthcheck: Verifica si la API responde y la base de datos está disponible."""
     try:
         db.execute(text("SELECT 1"))
         return {"status": "ok", "db": "ok"}
@@ -141,7 +140,7 @@ def healthcheck(db: Session = Depends(get_db)):
     "/players",
     response_model=schemas.PlayerOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear jugador (solo admin)",
+    summary="Crear jugador",
     tags=["admin"],
 )
 def create_player(
@@ -151,10 +150,8 @@ def create_player(
 ):
     """
     Crea un nuevo jugador e inserta su rol inicial en player_roles.
-    Solo accesible con token de rol admin.
 
-    Para crear el primer admin, usar el CLI:
-        python -m app.cli_create_user --role admin ...
+    **Roles disponibles:** "admin"
     """
     player = models.Player(
         name          = player_in.name,
@@ -200,9 +197,8 @@ def login(
 ):
     """
     Login OAuth2 (username = email del jugador).
-    CAMBIO v1.1: el JWT incluye claim 'roles' (List[str]) en lugar de
-    'role' (str). LSG-Core-API está actualizado para leer ambos formatos
-    durante la transición.
+
+    **Roles disponibles:** "player", "teacher", "researcher", "admin"
     """
     player = (
         db.query(models.Player)
@@ -234,7 +230,8 @@ def login(
 def token_remaining(token: str = Depends(oauth2_scheme)):
     """
     Retorna los segundos restantes del token activo.
-    No requiere consultar la BD; lee directamente los claims exp/iat del JWT.
+    
+    **Roles disponibles:** "player", "teacher", "researcher", "admin"
     """
     try:
         payload = decode_access_token(token)
@@ -311,7 +308,7 @@ def whoami(current_player: models.Player = Depends(get_current_player)):
     "/admin/players/{player_id}/roles",
     response_model=schemas.RoleAssignResponse,
     tags=["admin"],
-    summary="Asignar o revocar rol a un jugador (solo admin)",
+    summary="Asignar o revocar rol a un jugador",
 )
 def manage_player_role(
     player_id: int,
@@ -330,6 +327,8 @@ def manage_player_role(
     ```json
     { "role": "researcher", "action": "grant" }
     ```
+
+    **Roles disponibles:** "admin"
     """
     target = db.query(models.Player).filter(
         models.Player.id_players == player_id
@@ -376,7 +375,7 @@ class RoleHistory(BaseModel):
     "/admin/players/{player_id}/roles",
     response_model=List[RoleHistory],
     tags=["admin"],
-    summary="Historial de roles de un jugador (solo admin)",
+    summary="Historial de roles de un jugador",
 )
 def get_player_roles(
     player_id: int,
@@ -402,6 +401,8 @@ def get_player_roles(
     curl -X GET '/lsg-auth/admin/players/26/roles' \\
       -H 'Authorization: Bearer <TOKEN_ADMIN>'
     ```
+
+    **Roles disponibles:** "admin"
     """
     target = db.query(models.Player).filter(
         models.Player.id_players == player_id
