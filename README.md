@@ -9,7 +9,7 @@ Provee:
 - Inicio de sesión con token JWT (claim `roles` como lista).
 - Sistema de **roles múltiples** por jugador (`player_roles`).
 - Endpoint `GET /token/remaining` para consultar segundos restantes del token.
-- Endpoint `PATCH /admin/players/{id}/roles` para asignar/revocar roles (solo admin).
+- Endpoints `PATCH` y `GET /admin/players/{id}/roles` para gestionar roles (solo admin).
 - Healthcheck de la API y de la conexión a la base de datos.
 
 ---
@@ -47,9 +47,12 @@ lsg-auth/
 | `GET`  | `/health` | — | Healthcheck + SELECT 1 en BD |
 | `POST` | `/login`  | — | Login OAuth2 → JWT (120 min) |
 | `GET`  | `/whoami` | cualquiera | Perfil + roles del token activo |
-| `GET`  | `/token/remaining` | cualquiera | Segundos restantes del JWT |
+| `GET`  | `/token/remaining` | cualquiera | Segundos restantes del JWT activo |
 | `POST` | `/players` | `admin` | Crear jugador con rol inicial |
 | `PATCH`| `/admin/players/{id}/roles` | `admin` | Asignar (`grant`) o revocar (`revoke`) rol |
+| `GET`  | `/admin/players/{id}/roles` | `admin` | Historial de roles (activos + revocados) |
+
+> **Nota:** La creación del primer usuario admin debe hacerse desde el CLI del contenedor (ver sección [Bootstrap](#crear-el-primer-admin-bootstrap)). El endpoint `POST /players` requiere un token admin activo.
 
 ---
 
@@ -60,7 +63,7 @@ El JWT emite el claim `"roles": ["player", "researcher"]` (lista, no string sing
 
 | Rol | Descripción |
 |-----|-------------|
-| `player` | Visualización y uso de servicios propios |
+| `player` | Visualización y uso de servicios propios únicamente |
 | `teacher` | Lectura de todos los jugadores y analíticas |
 | `researcher` | Todo lo de teacher + edición, exportación e IC² ajeno |
 | `admin` | Acceso completo incluyendo configuración del sistema |
@@ -89,8 +92,8 @@ CREATE TABLE player_roles (
   id_players     INT NOT NULL,
   role           VARCHAR(32) NOT NULL,
   assigned_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  assigned_by    INT NULL,           -- id_players del admin asignador
-  revoked_at     TIMESTAMP NULL,     -- NULL = rol activo
+  assigned_by    INT NULL,           -- id_players del admin asignador (NULL = CLI bootstrap)
+  revoked_at     TIMESTAMP NULL,     -- NULL = rol activo; timestamp = rol revocado
   CONSTRAINT chk_pr_role CHECK (role IN ('player','researcher','admin','teacher')),
   FOREIGN KEY (id_players) REFERENCES players(id_players)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -150,7 +153,7 @@ docker logs -n 100 lsg_auth
 
 ### Crear el primer admin (bootstrap)
 
-La creación de usuarios desde el endpoint `/players` requiere un token admin.  
+La creación de usuarios desde el endpoint `POST /players` requiere un token admin.  
 Para el bootstrap inicial usar el CLI directamente en el contenedor:
 
 ```bash
@@ -165,11 +168,11 @@ docker compose exec app \
 ### Verificar
 
 ```bash
-# Swagger
-open https://lsg.diinf.usach.cl/lsg-auth/docs
-
 # Health
 curl https://lsg.diinf.usach.cl/lsg-auth/health
+
+# Swagger
+https://lsg.diinf.usach.cl/lsg-auth/docs
 ```
 
 ---
@@ -181,10 +184,8 @@ cd lsg-auth
 
 # Crear y activar entorno virtual
 python -m venv .venv
-# Windows (PowerShell)
-.\.venv\Scripts\Activate.ps1
-# Linux/macOS
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1   # Windows PowerShell
+source .venv/bin/activate       # Linux/macOS
 
 # Instalar dependencias
 pip install --upgrade pip
@@ -192,19 +193,14 @@ pip install -r requirements.txt
 
 # Configurar variables de entorno
 cp .env.example .env
-# Editar .env: añadir DB_HOST=127.0.0.1, DB_PORT=3306 para dev local
-# (no están en .env.example porque en producción los inyecta docker-compose)
+# Agregar al .env para dev local:
+#   DB_HOST=127.0.0.1
+#   DB_PORT=3306
 
 # Levantar API
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Swagger: http://localhost:8000/docs
 ```
-
-> Para dev local añadir al `.env`:
-> ```
-> DB_HOST=127.0.0.1
-> DB_PORT=3306       # o el puerto del túnel SSH si es BD remota
-> ```
 
 ---
 
@@ -229,15 +225,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 2. Consultar tiempo restante:
    GET /token/remaining  Authorization: Bearer <token>
-   → {"expires_in_seconds": 487, "expires_at": "2026-05-06T15:23:41Z"}
+   → {"expires_in_seconds": 6843, "expires_at": "2026-05-07T12:23:41Z"}
 
 3. Usar token en lsg-core-api-prod:
    Authorization: Bearer <token>  (válido 120 minutos)
 
 4. Gestión de roles (admin):
+   # Asignar rol
    PATCH /admin/players/46/roles
    Body: {"role": "researcher", "action": "grant"}
    → {"status": "ok", "player_id": 46, "role": "researcher", "action": "grant"}
+
+   # Ver historial de roles (activos e históricos)
+   GET /admin/players/46/roles
+   GET /admin/players/46/roles?include_revoked=false  ← solo activos
+
+   # Revocar rol
+   PATCH /admin/players/46/roles
+   Body: {"role": "researcher", "action": "revoke"}
 ```
 
 ---
@@ -246,13 +251,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### v1.1.0 (2026-05)
 - Sistema de roles multi-rol (`player_roles`): un jugador puede tener N roles activos.
-- JWT emite `"roles": [...]` (lista) en lugar de `"role": "..."` (string).  
-  Compatibilidad backward: `security.py` de `lsg-core-api-prod` acepta ambos formatos.
-- `JWT_EXPIRE_MINUTES` aumentado de 10 a **120 minutos**.
-- Nuevo endpoint `GET /token/remaining`.
-- Nuevo endpoint `PATCH /admin/players/{id}/roles` (grant/revoke).
-- Creación de usuarios (`POST /players`) restringida a rol `admin`.
-- `models.py`: eliminada columna `role` de `Player`; agregado modelo `PlayerRole`.
+- JWT emite `"roles": [...]` (lista) en lugar de `"role": "..."` (string). Compatibilidad backward: `security.py` de `lsg-core-api-prod` acepta ambos formatos durante la transición.
+- `JWT_EXPIRE_MINUTES` ajustado a **120 minutos** para sesiones de investigación extendidas.
+- Nuevo endpoint `GET /token/remaining` — tiempo restante sin consultar la BD.
+- Nuevo endpoint `PATCH /admin/players/{id}/roles` — asignar/revocar roles (grant/revoke).
+- Nuevo endpoint `GET /admin/players/{id}/roles` — historial completo de roles con `include_revoked`.
+- Endpoint `POST /players` restringido a rol `admin`. Bootstrap via CLI.
+- `models.py`: eliminada columna `role` de `Player`; nuevo modelo `PlayerRole`.
 - `schemas.py`: migración a Pydantic v2 (`ConfigDict`, `field_validator`).
 - `cli_create_user.py`: inserta en `player_roles` en lugar de `players.role`.
 
