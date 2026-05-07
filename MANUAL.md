@@ -29,7 +29,7 @@ Cada usuario tiene uno o más roles que determinan a qué puede acceder:
 
 ---
 
-## 2. Cómo empezar - flujo básico
+## 2. Cómo empezar — flujo básico
 
 ```
 1. Ir a: https://lsg.diinf.usach.cl/lsg-auth/docs
@@ -46,52 +46,32 @@ Cada usuario tiene uno o más roles que determinan a qué puede acceder:
 
 ---
 
-### 3.1 GET /health - Verificar que el servicio está funcionando
+### 3.1 GET /health — Verificar que el servicio está funcionando
 
 **¿Para qué sirve?**  
 Confirmar que el servicio LSG-Auth y su conexión a la base de datos están operativos. No requiere autenticación.
 
 **Roles requeridos:** ninguno
 
-**Ejemplo de uso (curl):**
 ```bash
 curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/health'
 ```
 
 **Respuesta exitosa (200):**
 ```json
-{
-  "status": "ok",
-  "db": "ok"
-}
-```
-
-**Si hay problemas (503):**
-```json
-{
-  "detail": "DB error: ..."
-}
+{"status": "ok", "db": "ok"}
 ```
 
 ---
 
-### 3.2 POST /login - Iniciar sesión y obtener token
+### 3.2 POST /login — Iniciar sesión y obtener token
 
-**¿Para qué sirve?**  
-Autenticarte con tu email y contraseña para obtener el token JWT que usarás en todos los demás endpoints.
+**¿Para qué sirve?** Autenticarte con tu email y contraseña para obtener el token JWT.
 
-**Roles requeridos:** ninguno (es el punto de entrada)
+**Roles requeridos:** ninguno
 
-**⚠️ Importante:** En el Swagger, el campo se llama `username` pero debes ingresar tu **email**.
+**Importante:** En el Swagger el campo se llama `username`, pero debes ingresar tu **email**.
 
-**Parámetros (formulario):**
-
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `username` | string | Tu email registrado en el sistema |
-| `password` | string | Tu contraseña |
-
-**Ejemplo con curl:**
 ```bash
 curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/login' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -106,29 +86,21 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/login' \
 }
 ```
 
-**Errores comunes:**
-
 | Código | Causa | Solución |
 |--------|-------|----------|
 | 401 | Email o contraseña incorrectos | Verificar credenciales |
-| 422 | Formato inválido | Verificar que se envía como formulario, no JSON |
+| 422 | Formato inválido | Enviar como formulario, no JSON |
 
-**¿Cómo usar el token?**  
-Copia el valor de `access_token` y úsalo en cualquier request como:
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+Usa el token como: `Authorization: Bearer eyJhbGci...`
 
 ---
 
-### 3.3 GET /whoami - Ver mi información actual
+### 3.3 GET /whoami — Ver mi información actual
 
-**¿Para qué sirve?**  
-Verificar que tu token es válido y ver tu perfil completo incluyendo los roles activos.
+**¿Para qué sirve?** Verificar que tu token es válido y ver tu perfil con roles activos.
 
 **Roles requeridos:** cualquier rol autenticado
 
-**Ejemplo con curl:**
 ```bash
 curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/whoami' \
   -H 'Authorization: Bearer <tu_token>'
@@ -137,24 +109,22 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/whoami' \
 **Respuesta exitosa (200):**
 ```json
 {
-  "id_players": 26,
-  "name": "Joaquín Macías",
+  "id_players": 46,
+  "name": "jmacias",
   "email": "joaquin.macias@usach.cl",
   "age": 30,
-  "roles": ["admin", "researcher"]
+  "roles": ["admin", "player"]
 }
 ```
 
 ---
 
-### 3.4 GET /token/remaining - ¿Cuánto tiempo le queda a mi token?
+### 3.4 GET /token/remaining — ¿Cuánto tiempo le queda a mi token?
 
-**¿Para qué sirve?**  
-Consultar cuántos segundos le quedan al token antes de expirar, sin necesidad de hacer un nuevo login. Útil para renovar proactivamente antes de que expire.
+**¿Para qué sirve?** Consultar cuántos segundos le quedan al token antes de expirar.
 
 **Roles requeridos:** cualquier rol autenticado
 
-**Ejemplo con curl:**
 ```bash
 curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/token/remaining' \
   -H 'Authorization: Bearer <tu_token>'
@@ -169,33 +139,52 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/token/remaining' \
 }
 ```
 
-**Interpretación:**
-- `expires_in_seconds`: segundos hasta que expira. Si es 0, el token ya expiró.
-- `expires_at`: hora exacta de expiración (UTC).
-- `issued_at`: hora en que se generó el token.
-
-**Consejo:** Si `expires_in_seconds` < 300 (menos de 5 minutos), haz un nuevo `POST /login`.
+**Consejo:** Si `expires_in_seconds` < 300, renueva el token con `POST /token/refresh` o `POST /login`.
 
 ---
 
-### 3.5 POST /players - Crear nuevo usuario (solo admin)
+### 3.5 POST /token/refresh — Renovar token sin hacer login
 
-**¿Para qué sirve?**  
-Crear una nueva cuenta de usuario en el sistema LSG. Solo los administradores pueden hacer esto desde la API. El primer administrador debe crearse desde la consola del servidor.
+**¿Para qué sirve?** Generar un nuevo token usando el token actual vigente, sin ingresar credenciales. Los roles se actualizan automáticamente desde la BD.
+
+**Roles requeridos:** cualquier rol autenticado (token vigente, no expirado)
+
+```bash
+curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/token/refresh' \
+  -H 'Authorization: Bearer <token_vigente>' \
+  -d ''
+```
+
+**Respuesta exitosa (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+| Código | Causa | Solución |
+|--------|-------|----------|
+| 401 | Token expirado o inválido | Usar `POST /login` para obtener token nuevo |
+
+> **Útil para:** scripts o mods de videojuego que necesitan mantener sesión activa durante más de 120 minutos sin guardar contraseña en el código.
+
+---
+
+### 3.6 POST /players — Crear nuevo usuario (solo admin)
+
+**¿Para qué sirve?** Crear una nueva cuenta de usuario. Solo administradores pueden hacerlo desde la API. El primer admin debe crearse desde la consola del servidor.
 
 **Roles requeridos:** `admin`
 
-**Parámetros (body JSON):**
-
 | Campo | Tipo | Requerido | Descripción |
 |-------|------|-----------|-------------|
-| `name` | string | Sí | Nombre completo del jugador |
-| `email` | string | Sí | Email único (será el username para login) |
+| `name` | string | Sí | Nombre completo |
+| `email` | string | Sí | Email único (username para login) |
 | `password` | string | Sí | Contraseña en texto plano (se hashea con bcrypt) |
 | `age` | integer | No | Edad del participante |
-| `role` | string | No | Rol inicial: `player`, `teacher`, `researcher` o `admin`. Default: `player` |
+| `role` | string | No | Rol inicial: `player`, `teacher`, `researcher`, `admin`. Default: `player` |
 
-**Ejemplo con curl:**
 ```bash
 curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/players' \
   -H 'Authorization: Bearer <token_admin>' \
@@ -212,7 +201,7 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/players' \
 **Respuesta exitosa (201):**
 ```json
 {
-  "id_players": 54,
+  "id_players": 57,
   "name": "María González",
   "email": "maria.gonzalez@usach.cl",
   "age": 22,
@@ -220,85 +209,57 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/players' \
 }
 ```
 
-**Errores comunes:**
-
 | Código | Causa | Solución |
 |--------|-------|----------|
 | 400 | Email ya registrado | Usar otro email |
-| 400 | Rol inválido | Usar player, teacher, researcher o admin |
-| 403 | Token sin rol admin | Necesitas un token de administrador |
+| 403 | Token sin rol admin | Necesitas token de administrador |
 
 ---
 
-### 3.6 PATCH /admin/players/{id}/roles - Asignar o revocar un rol
+### 3.7 PATCH /admin/players/{id}/roles — Asignar o revocar un rol
 
-**¿Para qué sirve?**  
-Cambiar los roles de un jugador: agregar un nuevo rol (`grant`) o quitarle uno (`revoke`). Un jugador puede tener múltiples roles activos simultáneamente.
+**¿Para qué sirve?** Cambiar los roles de un jugador: agregar (`grant`) o quitar (`revoke`). Un jugador puede tener múltiples roles activos.
 
 **Roles requeridos:** `admin`
 
-**Parámetros de ruta:**
-
-| Parámetro | Descripción |
-|-----------|-------------|
-| `{id}` | `id_players` del jugador a modificar |
-
-**Body JSON:**
-
 | Campo | Valores | Descripción |
 |-------|---------|-------------|
-| `role` | `player`, `teacher`, `researcher`, `admin` | Rol a asignar o revocar |
-| `action` | `grant`, `revoke` | `grant` agrega el rol, `revoke` lo quita |
+| `role` | `player`, `teacher`, `researcher`, `admin` | Rol a modificar |
+| `action` | `grant`, `revoke` | `grant` agrega, `revoke` quita |
 
-**Ejemplo - asignar rol researcher al jugador 54:**
 ```bash
-curl -X PATCH 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/54/roles' \
+# Asignar rol researcher al jugador 57
+curl -X PATCH 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/57/roles' \
   -H 'Authorization: Bearer <token_admin>' \
   -H 'Content-Type: application/json' \
-  -d '{"role": "researcher", "action": "grant"}'
+  -d '{"role": "teacher", "action": "grant"}'
 ```
 
 **Respuesta exitosa (200):**
 ```json
-{
-  "status": "ok",
-  "player_id": 54,
-  "role": "researcher",
-  "action": "grant"
-}
-```
-
-**Ejemplo - revocar rol researcher del jugador 54:**
-```bash
-curl -X PATCH 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/54/roles' \
-  -H 'Authorization: Bearer <token_admin>' \
-  -H 'Content-Type: application/json' \
-  -d '{"role": "researcher", "action": "revoke"}'
+{"status": "ok", "player_id": 57, "role": "teacher", "action": "grant"}
 ```
 
 **Notas:**
 - `grant` es idempotente: si el rol ya existe, no lo duplica.
-- `revoke` no borra el historial; marca el rol como revocado con timestamp.
+- `revoke` no borra el historial; marca el rol con timestamp de revocación.
 
 ---
 
-### 3.7 GET /admin/players/{id}/roles - Ver historial de roles
+### 3.8 GET /admin/players/{id}/roles — Ver historial de roles
 
-**¿Para qué sirve?**  
-Consultar todos los roles (activos y revocados) de un jugador, incluyendo quién los asignó y cuándo.
+**¿Para qué sirve?** Consultar todos los roles (activos e históricos) de un jugador.
 
 **Roles requeridos:** `admin`
-
-**Parámetros:**
 
 | Parámetro | Tipo | Descripción |
 |-----------|------|-------------|
 | `{id}` (ruta) | integer | `id_players` del jugador |
-| `include_revoked` (query) | boolean | `true` (default): muestra todos. `false`: solo roles activos |
+| `include_revoked` (query) | boolean | `true` (default): todos. `false`: solo activos |
 
-**Ejemplo - ver roles activos del jugador 54:**
 ```bash
-curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/54/roles?include_revoked=false' \
+# Ver solo roles activos del jugador 57
+curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/57/roles?include_revoked=false' \
   -H 'Authorization: Bearer <token_admin>'
 ```
 
@@ -306,18 +267,18 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/54/roles?include_
 ```json
 [
   {
-    "id_player_role": 12,
-    "role": "player",
-    "assigned_at": "2026-05-01T10:00:00",
-    "assigned_by": 26,
+    "id_player_role": 15,
+    "role": "teacher",
+    "assigned_at": "2026-05-07T10:52:46",
+    "assigned_by": 46,
     "revoked_at": null,
     "is_active": true
   },
   {
-    "id_player_role": 15,
-    "role": "researcher",
-    "assigned_at": "2026-05-07T09:30:00",
-    "assigned_by": 26,
+    "id_player_role": 14,
+    "role": "player",
+    "assigned_at": "2026-05-07T10:48:52",
+    "assigned_by": 46,
     "revoked_at": null,
     "is_active": true
   }
@@ -329,13 +290,16 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/54/roles?include_
 ## 4. Preguntas frecuentes
 
 **P: Mi token expiró, ¿qué hago?**  
-R: Simplemente vuelve a hacer `POST /login`. El token dura 120 minutos.
+R: Usa `POST /token/refresh` si el token aún no expiró, o `POST /login` si ya expiró.
 
 **P: ¿Puedo tener varios roles al mismo tiempo?**  
-R: Sí. Un usuario puede tener `player` y `researcher` simultáneamente. El sistema otorga el nivel de acceso del rol más alto.
+R: Sí. Un usuario puede tener `player` y `researcher` simultáneamente.
 
 **P: ¿Cómo sé cuál es mi `id_players`?**  
 R: Usa `GET /whoami` y verás el campo `id_players` en la respuesta.
 
+**P: ¿Cómo veo los roles actuales de un jugador?**  
+R: Usa `GET /admin/players/{id}/roles?include_revoked=false` (solo admin).
+
 **P: ¿Por qué mi token no funciona en lsg-core-api?**  
-R: Verifica que estás usando el formato exacto `Bearer <token>` en el header `Authorization`, y que el token no expiró (`GET /token/remaining`).
+R: Verifica el formato exacto `Bearer <token>` en el header `Authorization`, y que el token no expiró (`GET /token/remaining`).
