@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 from typing import List, Optional
+from pydantic import BaseModel
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -57,6 +58,18 @@ app = FastAPI(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+class RoleHistory(BaseModel):
+    """Registro histórico de un rol (activo o revocado)."""
+    id_player_role: int
+    role:           str
+    assigned_at:    Optional[datetime]
+    assigned_by:    Optional[int]
+    revoked_at:     Optional[datetime]
+    is_active:      bool   # True si revoked_at IS NULL
+
+    class Config:
+        from_attributes = True  # Pydantic v2 (antes: orm_mode = True)
+        
 
 @app.on_event("startup")
 def on_startup():
@@ -362,14 +375,6 @@ def manage_player_role(
     )
 
 
-class RoleHistory(BaseModel):
-    """Registro histórico de un rol (activo o revocado)."""
-    id_player_role: int
-    role:           str
-    assigned_at:    Optional[datetime]
-    assigned_by:    Optional[int]
-    revoked_at:     Optional[datetime]
-    is_active:      bool   # True si revoked_at IS NULL
 
 @app.get(
     "/admin/players/{player_id}/roles",
