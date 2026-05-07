@@ -324,6 +324,7 @@ def manage_player_role(
 
     - **grant**: inserta una nueva fila en player_roles (idempotente si ya existe activo).
     - **revoke**: setea revoked_at = NOW() en la fila activa del rol indicado.
+    - **role**: ["player", "teacher", "researcher", "admin"]
 
     Ejemplo:
     ```json
