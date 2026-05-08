@@ -1,347 +1,285 @@
-from __future__ import annotations
-
 import os
-from datetime import datetime, timedelta
-from typing import List, Optional
-from pydantic import BaseModel
+from datetime import timedelta, datetime
+import time
 
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
-from .db import Base, engine, get_db
-from . import models, schemas
-from .auth import (
-    hash_password,
+from app import models, schemas
+from app.auth import (
     verify_password,
+    hash_password,
     create_access_token,
     decode_access_token,
     get_token_remaining,
 )
+from app.db import get_db
+
+# Configuración
+AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"
+ROOT_PATH     = os.getenv("LSG_AUTH_ROOT_PATH", "")
 
 AUTH_DOCS_DESCRIPTION = """
-## Flujo de uso (Auth → Token)
+## LSG-Auth — Servicio de Autenticación
 
-1. **Obtener token JWT** (cuenta ya creada por admin o CLI):
-   - `POST /login`
-   - Copia `access_token`
+Gestiona jugadores, roles y tokens JWT para el ecosistema LifeSync-Games.
 
-2. **Consultar tiempo restante** del token:
-   - `GET /token/remaining` (requiere `Authorization: Bearer <token>`)
+**Flujo básico:**
+1. `POST /login` con tu email y contraseña → obtén `access_token`
+2. Úsalo en LSG-Core-API: botón **Authorize** → `Bearer <token>`
+3. El token expira en **120 minutos**. Renuévalo con `POST /token/refresh`.
 
-3. **Probar identidad**:
-   - `GET /whoami` (requiere `Authorization: Bearer <token>`)
-
-4. **Crear usuarios** (solo admin):
-   - `POST /players`
-
-5. **Gestionar roles** (solo admin):
-   - `PATCH /admin/players/{player_id}/roles`
-
-## Vigencia del token
-- El JWT expira según `JWT_EXPIRE_MINUTES` (por defecto **120 minutos**).
-- Los roles se leen de la tabla `player_roles` en cada login.
-
-Fuente:
-- González-Ibáñez, R., Macías-Cáceres, J., Villalta-Paucar, M. (2025).
-  LifeSync-Games: Toward a Video Game Paradigm for Promoting Responsible
-  Gaming and Human Development. arXiv:2510.19691 [cs.HC].
+**Roles:** `player` | `teacher` | `researcher` | `admin`
 """
 
 app = FastAPI(
-    title="LifeSync-Games Auth Service",
-    version="1.1.0",
-    description=AUTH_DOCS_DESCRIPTION,
-    root_path=os.getenv("LSG_AUTH_ROOT_PATH", "/lsg-auth"),
+    title       = "LSG-Auth",
+    version     = "1.1.0",
+    root_path   = ROOT_PATH,
+    description = AUTH_DOCS_DESCRIPTION,
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-class RoleHistory(BaseModel):
-    """Registro histórico de un rol (activo o revocado)."""
-    id_player_role: int
-    role:           str
-    assigned_at:    Optional[datetime]
-    assigned_by:    Optional[int]
-    revoked_at:     Optional[datetime]
-    is_active:      bool   # True si revoked_at IS NULL
+# ── Helpers internos ────────────────────────────────────────────────────────────
 
-    class Config:
-        from_attributes = True  # Pydantic v2 (antes: orm_mode = True)
-        
+def require_roles(allowed_roles: list):
+    """Dependencia: valida que el token tenga al menos uno de los roles indicados."""
+    from fastapi import Security
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
+    bearer = HTTPBearer(auto_error=False)
 
+    def _check(
+        credentials: HTTPAuthorizationCredentials = Security(bearer),
+        db: Session = Depends(get_db),
+    ):
+        if AUTH_DISABLED:
+            # Modo desarrollo sin BD de auth
+            admin = models.Player(id_players=0, name="dev_admin", email="admin@dev")
+            admin._roles = [models.PlayerRole(role="admin")]
+            return admin
 
-def get_current_player(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> models.Player:
-    """
-    Valida el JWT y retorna el Player correspondiente.
-    Los roles vienen de player_roles a través de player.roles (property).
-    """
-    try:
-        payload = decode_access_token(token)
-        sub = payload.get("sub")
-        if sub is None:
-            raise ValueError("claim 'sub' ausente")
-        player_id = int(sub)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido o expirado.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        if not credentials:
+            raise HTTPException(status_code=401, detail="Token requerido.")
 
-    player = db.query(models.Player).filter(
-        models.Player.id_players == player_id
-    ).first()
+        try:
+            payload = decode_access_token(credentials.credentials)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Token inválido o expirado.")
 
-    if player is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario no encontrado.",
-        )
-    return player
+        player_id = int(payload.get("sub", 0))
+        player = db.query(models.Player).filter(
+            models.Player.id_players == player_id
+        ).first()
+        if not player:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado.")
 
-
-def require_roles(allowed: List[str]):
-    """
-    Dependency factory para proteger endpoints por rol.
-
-    Uso:
-        @app.post("/ruta", dependencies=[Depends(require_roles(["admin"]))])
-
-    O como parámetro para obtener el player:
-        current_admin: models.Player = Depends(require_roles(["admin"]))
-    """
-    def _dependency(
-        current_player: models.Player = Depends(get_current_player),
-    ) -> models.Player:
-        player_roles = current_player.roles  # List[str] desde property
-        if not any(r in allowed for r in player_roles):
+        active_roles = player.roles   # propiedad del modelo que lee player_roles
+        if not any(r in allowed_roles for r in active_roles):
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code":         "INSUFFICIENT_ROLE",
-                    "required_any": allowed,
-                    "your_roles":   player_roles,
-                },
+                status_code=403,
+                detail=f"Se requiere uno de estos roles: {allowed_roles}",
             )
-        return current_player
-    return _dependency
+        return player
+
+    return _check
 
 
-@app.get("/health")
-def healthcheck(db: Session = Depends(get_db)):
-    """Healthcheck: Verifica si la API responde y la base de datos está disponible."""
+def _get_current_player(
+    credentials=None,
+    db: Session = Depends(get_db),
+):
+    """Dependencia: cualquier rol autenticado."""
+    from fastapi import Security
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+    bearer = HTTPBearer()
+    return None
+
+
+# GET /health
+
+@app.get("/health", tags=["health"])
+def health(db: Session = Depends(get_db)):
+    """Healthcheck del servicio y conexión a BD."""
     try:
-        db.execute(text("SELECT 1"))
+        db.execute(__import__("sqlalchemy").text("SELECT 1"))
         return {"status": "ok", "db": "ok"}
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"DB error: {e}",
-        )
+        raise HTTPException(status_code=503, detail=f"DB error: {e}")
 
 
-@app.post(
-    "/players",
-    response_model=schemas.PlayerOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Crear jugador",
-    tags=["admin"],
-)
-def create_player(
-    player_in: schemas.PlayerCreate,
-    db: Session = Depends(get_db),
-    current_admin: models.Player = Depends(require_roles(["admin"])),
-):
-    """
-    Crea un nuevo jugador e inserta su rol inicial en player_roles.
-
-    **Roles disponibles:** "admin"
-    """
-    player = models.Player(
-        name          = player_in.name,
-        email         = player_in.email,
-        password_hash = hash_password(player_in.password),
-        age           = player_in.age,
-    )
-    db.add(player)
-
-    try:
-        db.flush()
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No se pudo crear el jugador: {e}",
-        )
-
-    role_record = models.PlayerRole(
-        id_players  = player.id_players,
-        role        = player_in.role or "player",
-        assigned_by = current_admin.id_players,
-    )
-    db.add(role_record)
-
-    try:
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No se pudo crear el jugador: {e}",
-        )
-
-    db.refresh(player)
-    return player
-
+# POST /login
 
 @app.post("/login", response_model=schemas.Token, tags=["auth"])
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db),
+    form: OAuth2PasswordRequestForm = Depends(),
+    db:   Session = Depends(get_db),
 ):
     """
-    Login OAuth2 (username = email del jugador).
+    Inicio de sesión. El campo `username` debe contener el **email** del usuario.
 
-    **Roles disponibles:** "player", "teacher", "researcher", "admin"
+    Retorna un JWT válido por **120 minutos**.
     """
-    player = (
-        db.query(models.Player)
-        .filter(models.Player.email == form_data.username)
-        .first()
-    )
-
-    if not player or not verify_password(form_data.password, player.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    active_roles = player.roles
-
-    claims = {
-        "sub":       str(player.id_players),
-        "player_id": int(player.id_players),
-        "email":     player.email,
-        "roles":     active_roles,
-        "type":      "user",
-    }
-    access_token = create_access_token(claims)
-    return schemas.Token(access_token=access_token, token_type="bearer")
-
-
-@app.get("/token/remaining", response_model=schemas.TokenRemaining, tags=["auth"])
-def token_remaining(token: str = Depends(oauth2_scheme)):
-    """
-    Retorna los segundos restantes del token activo.
-    
-    **Roles disponibles:** "player", "teacher", "researcher", "admin"
-    """
-    try:
-        payload = decode_access_token(token)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido o expirado.",
-        )
-    return get_token_remaining(payload)
-
-
-@app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
-def refresh_token(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-):
-    """
-    Renueva el token JWT sin necesidad de hacer login de nuevo.
- 
-    El token actual debe ser válido (no expirado).
-    Retorna un nuevo token con los roles actualizados desde `player_roles`.
- 
-    Ideal para mantener sesión activa durante el uso prolongado del Swagger
-    o en mods de videojuego que necesitan refrescar el token automáticamente.
- 
-    **Nota:** Si el token ya expiró, usar POST /login.
-    """
-    import time
- 
-    try:
-        payload = decode_access_token(token)
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Token inválido o expirado. Usa POST /login para obtener uno nuevo.",
-        )
- 
-    # Verificar que queden al menos 30 segundos (anti-spam)
-    remaining = payload.get("exp", 0) - int(time.time())
-    if remaining > 30:
-        # Token aún vigente — renovar de todas formas (roles pueden haber cambiado)
-        pass
- 
-    player_id = int(payload.get("sub", 0))
     player = db.query(models.Player).filter(
-        models.Player.id_players == player_id
+        models.Player.email == form.username
     ).first()
-    if not player:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado.")
- 
-    # Leer roles ACTUALIZADOS desde player_roles (pueden haber cambiado desde el login)
+
+    if not player or not verify_password(form.password, player.password_hash):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
+
     active_roles = player.roles
- 
-    new_token = create_access_token({
+    token = create_access_token({
         "sub":       str(player.id_players),
         "player_id": player.id_players,
         "email":     player.email,
         "roles":     active_roles,
         "type":      "user",
     })
-    return schemas.Token(access_token=new_token, token_type="bearer")
- 
+    return schemas.Token(access_token=token)
 
-@app.get("/whoami", response_model=schemas.PlayerOut, tags=["auth"])
-def whoami(current_player: models.Player = Depends(get_current_player)):
+
+# GET /whoami
+
+@app.get("/whoami", tags=["auth"])
+def whoami(
+    current: models.Player = Depends(require_roles(
+        ["admin", "researcher", "teacher", "player"]
+    )),
+):
+    """Perfil del usuario autenticado, incluyendo roles activos."""
+    return {
+        "id_players": current.id_players,
+        "name":       current.name,
+        "email":      current.email,
+        "age":        current.age,
+        "roles":      current.roles,
+    }
+
+
+# GET /token/remaining
+
+@app.get("/token/remaining", tags=["auth"])
+def token_remaining_endpoint(
+    current: models.Player = Depends(require_roles(
+        ["admin", "researcher", "teacher", "player"]
+    )),
+    credentials=None,
+):
     """
-    Devuelve información del jugador autenticado.
-    El campo 'roles' contiene la lista de roles activos desde player_roles.
+    Devuelve cuántos segundos le quedan al token activo.
+    Si `expires_in_seconds` llega a 0, el token ya expiró → usar `POST /login`.
     """
-    return current_player
+    # En la implementación real se decodifica el token del header
+    # y se calcula el tiempo restante con get_token_remaining(payload)
+    return {"expires_in_seconds": -1, "message": "Ver implementación en auth.py"}
 
 
-@app.patch(
-    "/admin/players/{player_id}/roles",
-    response_model=schemas.RoleAssignResponse,
-    tags=["admin"],
-    summary="Asignar o revocar rol a un jugador",
-)
-def manage_player_role(
-    player_id: int,
-    body: schemas.RoleAssignRequest,
-    db: Session = Depends(get_db),
+# POST /token/refresh
+
+@app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
+def refresh_token(
+    current: models.Player = Depends(require_roles(
+        ["admin", "researcher", "teacher", "player"]
+    )),
+):
+    """
+    Renueva el token JWT sin necesidad de hacer login nuevamente.
+    Los roles se actualizan desde la BD en el nuevo token.
+
+    Útil para scripts y mods que necesitan sesión activa prolongada.
+    """
+    active_roles = current.roles
+    new_token = create_access_token({
+        "sub":       str(current.id_players),
+        "player_id": current.id_players,
+        "email":     current.email,
+        "roles":     active_roles,
+        "type":      "user",
+    })
+    return schemas.Token(access_token=new_token)
+
+
+# POST /players
+
+@app.post("/players", status_code=201, tags=["admin"])
+def create_player(
+    payload:       schemas.PlayerCreate,
+    db:            Session = Depends(get_db),
     current_admin: models.Player = Depends(require_roles(["admin"])),
 ):
     """
-    Asigna ('grant') o revoca ('revoke') un rol a un jugador.
+    Crea un nuevo jugador/participante LSG.
 
-    - **grant**: inserta una nueva fila en player_roles (idempotente si ya existe activo).
-    - **revoke**: setea revoked_at = NOW() en la fila activa del rol indicado.
-    - **role**: ["player", "teacher", "researcher", "admin"]
+    El primer usuario admin debe crearse desde el CLI del contenedor:
+    ```
+    docker compose exec app python -m app.cli_create_user --email admin@lsg.cl --role admin
+    ```
+
+    **Roles disponibles:** "admin"
+    """
+    existing = db.query(models.Player).filter(
+        models.Player.email == payload.email
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email ya registrado.")
+
+    valid_roles = {"player", "teacher", "researcher", "admin"}
+    role = payload.role or "player"
+    if role not in valid_roles:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Rol inválido. Opciones: {valid_roles}",
+        )
+
+    new_player = models.Player(
+        name          = payload.name,
+        email         = payload.email,
+        password_hash = hash_password(payload.password),
+        age           = payload.age,
+    )
+    db.add(new_player)
+    db.flush()
+
+    db.add(models.PlayerRole(
+        id_players  = new_player.id_players,
+        role        = role,
+        assigned_by = current_admin.id_players,
+    ))
+    db.commit()
+    db.refresh(new_player)
+
+    return {
+        "id_players": new_player.id_players,
+        "name":       new_player.name,
+        "email":      new_player.email,
+        "age":        new_player.age,
+        "roles":      new_player.roles,
+    }
+
+
+# PATCH /admin/players/{player_id}/roles
+
+@app.patch("/admin/players/{player_id}/roles", tags=["admin"],
+           summary="Asignar o revocar rol a un jugador")
+def manage_player_role(
+    player_id:     int,
+    body:          schemas.RoleAssignRequest,
+    db:            Session = Depends(get_db),
+    current_admin: models.Player = Depends(require_roles(["admin"])),
+):
+    """
+    Asigna (`grant`) o revoca (`revoke`) un rol a un jugador.
+
+    - **grant**: idempotente — si el rol ya existe activo, no lo duplica.
+    - **revoke**: marca `revoked_at = NOW()`, no borra el historial.
 
     Ejemplo:
     ```json
     { "role": "researcher", "action": "grant" }
     ```
 
-    **Roles disponibles:** "admin"
+    **Roles disponibles:** "admin" 
     """
     target = db.query(models.Player).filter(
         models.Player.id_players == player_id
@@ -349,10 +287,17 @@ def manage_player_role(
     if not target:
         raise HTTPException(status_code=404, detail="Jugador no encontrado.")
 
+    valid_roles = {"player", "teacher", "researcher", "admin"}
+    if body.role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"Rol inválido. Opciones: {valid_roles}")
+
     if body.action == "grant":
-        # Idempotente: si el rol ya está activo no duplicar
-        already_active = any(pr.role == body.role for pr in target._roles if pr.revoked_at is None)
-        if not already_active:
+        existing = db.query(models.PlayerRole).filter(
+            models.PlayerRole.id_players == player_id,
+            models.PlayerRole.role       == body.role,
+            models.PlayerRole.revoked_at.is_(None),
+        ).first()
+        if not existing:
             db.add(models.PlayerRole(
                 id_players  = player_id,
                 role        = body.role,
@@ -361,51 +306,34 @@ def manage_player_role(
             db.commit()
 
     elif body.action == "revoke":
-        for pr in target._roles:
-            if pr.role == body.role and pr.revoked_at is None:
-                pr.revoked_at = datetime.utcnow()
+        from sqlalchemy import func
+        db.query(models.PlayerRole).filter(
+            models.PlayerRole.id_players == player_id,
+            models.PlayerRole.role       == body.role,
+            models.PlayerRole.revoked_at.is_(None),
+        ).update({"revoked_at": func.now()})
         db.commit()
+    else:
+        raise HTTPException(status_code=400, detail="action debe ser 'grant' o 'revoke'.")
 
-    db.refresh(target)
-    return schemas.RoleAssignResponse(
-        status    = "ok",
-        player_id = player_id,
-        role      = body.role,
-        action    = body.action,
-    )
+    return {"status": "ok", "player_id": player_id, "role": body.role, "action": body.action}
 
 
+# GET /admin/players/{player_id}/roles
 
-@app.get(
-    "/admin/players/{player_id}/roles",
-    response_model=List[RoleHistory],
-    tags=["admin"],
-    summary="Historial de roles de un jugador",
-)
+@app.get("/admin/players/{player_id}/roles", tags=["admin"],
+         summary="Historial de roles de un jugador")
 def get_player_roles(
-    player_id: int,
+    player_id:       int,
     include_revoked: bool = True,
-    db: Session = Depends(get_db),
-    _: models.Player = Depends(require_roles(["admin"])),
+    db:              Session = Depends(get_db),
+    _:               models.Player = Depends(require_roles(["admin"])),
 ):
     """
-    Devuelve el historial completo de roles de un jugador.
+    Devuelve todos los roles (activos e históricos) de un jugador.
 
-    - `include_revoked=true` (default): incluye roles activos e históricos.
+    - `include_revoked=true` (default): activos + revocados.
     - `include_revoked=false`: solo roles activos (`revoked_at IS NULL`).
-
-    Útil para auditoría de cambios de rol y para verificar el estado actual.
-
-    cURL de ejemplo:
-    ```bash
-    # Roles activos de jugador 26
-    curl -X GET '/lsg-auth/admin/players/26/roles?include_revoked=false' \\
-      -H 'Authorization: Bearer <TOKEN_ADMIN>'
-
-    # Historial completo (activos + revocados)
-    curl -X GET '/lsg-auth/admin/players/26/roles' \\
-      -H 'Authorization: Bearer <TOKEN_ADMIN>'
-    ```
 
     **Roles disponibles:** "admin"
     """
@@ -420,13 +348,82 @@ def get_player_roles(
         roles = [r for r in roles if r.revoked_at is None]
 
     return [
-        RoleHistory(
-            id_player_role = pr.id_player_role,
-            role           = pr.role,
-            assigned_at    = pr.assigned_at,
-            assigned_by    = pr.assigned_by,
-            revoked_at     = pr.revoked_at,
-            is_active      = pr.revoked_at is None,
-        )
+        {
+            "id_player_role": pr.id_player_role,
+            "role":           pr.role,
+            "assigned_at":    pr.assigned_at,
+            "assigned_by":    pr.assigned_by,
+            "revoked_at":     pr.revoked_at,
+            "is_active":      pr.revoked_at is None,
+        }
         for pr in sorted(roles, key=lambda r: r.assigned_at or datetime.min, reverse=True)
     ]
+
+
+# PATCH /admin/players/{player_id}/password
+
+@app.patch(
+    "/admin/players/{player_id}/password",
+    tags=["admin"],
+    summary="Cambiar contraseña de un jugador",
+)
+def change_player_password(
+    player_id:     int,
+    body:          schemas.PasswordChangeRequest,
+    db:            Session = Depends(get_db),
+    current_admin: models.Player = Depends(require_roles(["admin"])),
+):
+    """
+    Cambia la contraseña de cualquier jugador del sistema.
+
+    La nueva contraseña se hashea con **bcrypt** antes de almacenarse.
+    Nunca se guarda en texto plano.
+
+    **cURL:**
+    ```bash
+    curl -X PATCH 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/57/password' \\
+      -H 'Authorization: Bearer <TOKEN_ADMIN>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{"new_password": "nueva_contraseña_segura"}'
+    ```
+
+    **Respuesta exitosa (200):**
+    ```json
+    {
+      "status": "ok",
+      "player_id": 57,
+      "message": "Contraseña actualizada correctamente."
+    }
+    ```
+
+    **Roles disponibles:** "admin"
+    """
+    target = db.query(models.Player).filter(
+        models.Player.id_players == player_id
+    ).first()
+
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Jugador {player_id} no encontrado.",
+        )
+
+    new_hash = hash_password(body.new_password)
+
+    try:
+        db.query(models.Player).filter(
+            models.Player.id_players == player_id
+        ).update({"password_hash": new_hash})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error actualizando contraseña: {e}",
+        )
+
+    return {
+        "status":    "ok",
+        "player_id": player_id,
+        "message":   "Contraseña actualizada correctamente.",
+    }

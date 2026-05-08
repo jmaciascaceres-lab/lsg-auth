@@ -1,73 +1,35 @@
-from typing import Optional, List, Literal
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
-
-VALID_ROLES = {"player", "teacher", "researcher", "admin"}
+from typing import Optional
+from pydantic import BaseModel, EmailStr
 
 
 class PlayerCreate(BaseModel):
-    """
-    Usado por POST /players.
-    El campo 'role' especifica el rol inicial que se inserta en player_roles.
-
-    **Roles disponibles:** "admin"
-    """
-    name:     str
-    email:    EmailStr
+    name: str
+    email: EmailStr
     password: str
-    age:      Optional[int] = None
-    role:     Optional[str] = "player"
-
-    @field_validator("role")
-    @classmethod
-    def validate_role(cls, v: str) -> str:
-        if v not in VALID_ROLES:
-            raise ValueError(
-                f"Rol inválido: '{v}'. Valores permitidos: {sorted(VALID_ROLES)}"
-            )
-        return v
-
+    age: Optional[int] = None
+    role: Optional[str] = "player"
 
 class PlayerLogin(BaseModel):
-    email:    EmailStr
+    email: EmailStr
     password: str
 
 
 class PlayerOut(BaseModel):
-    """
-    Respuesta de endpoints que devuelven datos de un jugador.
-    from_attributes=True permite que Pydantic lea player.roles (property).
-    """
-    model_config = ConfigDict(from_attributes=True)
-
     id_players: int
-    name:       str
-    email:      EmailStr
-    age:        Optional[int] = None
-    roles:      List[str] = []
+    name: str
+    email: EmailStr
+    age: Optional[int] = None
+    role: Optional[str] = "player"
+    class Config:
+        orm_mode = True
 
 
 class Token(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
+    token_type: str = "bearer"
 
 
-class TokenRemaining(BaseModel):
-    """Respuesta de GET /token/remaining."""
-    expires_in_seconds: int
-    expires_at:         str              # ISO-8601 UTC
-    issued_at:          Optional[str] = None
+class PasswordChangeRequest(BaseModel):
+    new_password: str
 
-class RoleAssignRequest(BaseModel):
-    """
-    Usado por PATCH /admin/players/:id/roles.
-    'action': grant agrega el rol, revoke lo marca como revocado.
-    """
-    role:   Literal["player", "teacher", "researcher", "admin"]
-    action: Literal["grant", "revoke"]
-
-
-class RoleAssignResponse(BaseModel):
-    status:    str
-    player_id: int
-    role:      str
-    action:    str
+    model_config = {"min_anystr_length": 8}
