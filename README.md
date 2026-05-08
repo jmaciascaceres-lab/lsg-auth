@@ -2,7 +2,7 @@
 
 Servicio de autenticación JWT para el ecosistema LifeSync-Games (LSG), basado en **FastAPI**, **MySQL** y **JWT**.
 
-**Versión:** 1.1.0 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
+**Versión:** 1.1.1 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
 
 Provee:
 - Gestión de jugadores con contraseña hasheada con **bcrypt**.
@@ -248,6 +248,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ---
 
 ## Changelog
+
+### v1.1.1 (2026-05-08)
+- **Bugfix:** agregada clase `RoleAssignRequest` a `schemas.py` (faltaba; causaba `AttributeError` en startup de uvicorn e impedía levantar el servicio).
+- **Pydantic v2:** reemplazado `orm_mode = True` por `model_config = {"from_attributes": True}` en `PlayerOut`.
+- **Pydantic v2:** reemplazado `min_anystr_length` por `str_min_length` en `PasswordChangeRequest`.
+- El campo `action` en `RoleAssignRequest` ahora usa `Literal["grant", "revoke"]`; la validación pasa a Pydantic (422 automático) en lugar del `HTTPException` manual previo.
 
 ### v1.1.0 (2026-05)
 - Sistema de roles multi-rol (`player_roles`): un jugador puede tener N roles activos.

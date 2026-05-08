@@ -2,7 +2,7 @@
 ## Servicio de Autenticación LifeSync-Games
 
 **URL del servicio:** https://lsg.diinf.usach.cl/lsg-auth/docs  
-**Versión:** 1.1.0 | **Proyecto:** LifeSync-Games - InTeractiOn Lab, USACH
+**Versión:** 1.1.1 | **Proyecto:** LifeSync-Games - InTeractiOn Lab, USACH
 
 ---
 
@@ -303,3 +303,15 @@ R: Usa `GET /admin/players/{id}/roles?include_revoked=false` (solo admin).
 
 **P: ¿Por qué mi token no funciona en lsg-core-api?**  
 R: Verifica el formato exacto `Bearer <token>` en el header `Authorization`, y que el token no expiró (`GET /token/remaining`).
+
+---
+
+## 5. Historial de versiones
+
+### v1.1.1 (2026-05-08)
+- **Corrección crítica:** se agrega la clase `RoleAssignRequest` a `schemas.py`, que faltaba y impedía que el servicio iniciara (`AttributeError` en startup de uvicorn).  
+  Campos del esquema: `role: str` y `action: Literal["grant", "revoke"]`.
+- **Migración Pydantic v2:** se corrigen dos deprecaciones que generaban `UserWarning` al iniciar el contenedor:
+  - `orm_mode = True` → `model_config = {"from_attributes": True}` en `PlayerOut`.
+  - `min_anystr_length` → `str_min_length` en `PasswordChangeRequest`.
+- El endpoint `PATCH /admin/players/{id}/roles` (sección 3.7) ahora valida el campo `action` automáticamente con un error `422` descriptivo cuando el valor no es `grant` ni `revoke`.
