@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, EmailStr
 
 
@@ -8,6 +8,7 @@ class PlayerCreate(BaseModel):
     password: str
     age: Optional[int] = None
     role: Optional[str] = "player"
+
 
 class PlayerLogin(BaseModel):
     email: EmailStr
@@ -20,8 +21,8 @@ class PlayerOut(BaseModel):
     email: EmailStr
     age: Optional[int] = None
     role: Optional[str] = "player"
-    class Config:
-        orm_mode = True
+
+    model_config = {"from_attributes": True}
 
 
 class Token(BaseModel):
@@ -32,4 +33,9 @@ class Token(BaseModel):
 class PasswordChangeRequest(BaseModel):
     new_password: str
 
-    model_config = {"min_anystr_length": 8}
+    model_config = {"str_min_length": 8}
+
+
+class RoleAssignRequest(BaseModel):
+    role:   str
+    action: Literal["grant", "revoke"]
