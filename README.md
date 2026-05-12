@@ -1,4 +1,4 @@
-# LSG-Auth — Servicio de Autenticación LifeSync-Games
+# LSG-Auth - Servicio de Autenticación LifeSync-Games
 
 Servicio de autenticación JWT para el ecosistema LifeSync-Games (LSG), basado en **FastAPI**, **MySQL** y **JWT**.
 
@@ -44,8 +44,8 @@ lsg-auth/
 
 | Método | Ruta | Rol requerido | Descripción |
 |--------|------|---------------|-------------|
-| `GET`  | `/health` | — | Healthcheck + SELECT 1 en BD |
-| `POST` | `/login`  | — | Login OAuth2 → JWT (120 min) |
+| `GET`  | `/health` | - | Healthcheck + SELECT 1 en BD |
+| `POST` | `/login`  | - | Login OAuth2 → JWT (120 min) |
 | `GET`  | `/whoami` | cualquiera | Perfil + roles del token activo |
 | `GET`  | `/token/remaining` | cualquiera | Segundos restantes del JWT activo |
 | `POST` | `/players` | `admin` | Crear jugador con rol inicial |
@@ -259,9 +259,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Sistema de roles multi-rol (`player_roles`): un jugador puede tener N roles activos.
 - JWT emite `"roles": [...]` (lista) en lugar de `"role": "..."` (string). Compatibilidad backward: `security.py` de `lsg-core-api-prod` acepta ambos formatos durante la transición.
 - `JWT_EXPIRE_MINUTES` ajustado a **120 minutos** para sesiones de investigación extendidas.
-- Nuevo endpoint `GET /token/remaining` — tiempo restante sin consultar la BD.
-- Nuevo endpoint `PATCH /admin/players/{id}/roles` — asignar/revocar roles (grant/revoke).
-- Nuevo endpoint `GET /admin/players/{id}/roles` — historial completo de roles con `include_revoked`.
+- Nuevo endpoint `GET /token/remaining` - tiempo restante sin consultar la BD.
+- Nuevo endpoint `PATCH /admin/players/{id}/roles` - asignar/revocar roles (grant/revoke).
+- Nuevo endpoint `GET /admin/players/{id}/roles` - historial completo de roles con `include_revoked`.
 - Endpoint `POST /players` restringido a rol `admin`. Bootstrap via CLI.
 - `models.py`: eliminada columna `role` de `Player`; nuevo modelo `PlayerRole`.
 - `schemas.py`: migración a Pydantic v2 (`ConfigDict`, `field_validator`).
@@ -271,4 +271,5 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Referencias
 
+- R. González-Ibáñez, J. I. Macías-Cáceres and M. V. Paucar, "LifeSync-Games: A Technical Note on a Novel Framework for Video Game Development," 2025 44th International Conference of the Chilean Computer Science Society (SCCC), Valparaiso, Chile, 2025, pp. 1-4, doi: 10.1109/SCCC67219.2025.11420722.
 - González-Ibáñez R., Macías-Cáceres J., Villalta-Paucar M. (2025). *LifeSync-Games: Toward a Video Game Paradigm for Promoting Responsible Gaming and Human Development*. arXiv:2510.19691 [cs.HC]. DOI: https://arxiv.org/abs/2510.19691

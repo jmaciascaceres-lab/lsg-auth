@@ -30,7 +30,7 @@ Cada usuario tiene uno o más roles que determinan a qué puede acceder:
 
 ---
 
-## 2. Cómo empezar — flujo básico
+## 2. Cómo empezar - flujo básico
 
 ```
 1. Ir a: https://lsg.diinf.usach.cl/lsg-auth/docs
@@ -47,7 +47,7 @@ Cada usuario tiene uno o más roles que determinan a qué puede acceder:
 
 ---
 
-### 3.1 GET /health — Verificar que el servicio está funcionando
+### 3.1 GET /health - Verificar que el servicio está funcionando
 
 **¿Para qué sirve?**  
 Confirmar que el servicio LSG-Auth y su conexión a la base de datos están operativos. No requiere autenticación.
@@ -65,7 +65,7 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/health'
 
 ---
 
-### 3.2 POST /login — Iniciar sesión y obtener token
+### 3.2 POST /login - Iniciar sesión y obtener token
 
 **¿Para qué sirve?** Autenticarte con tu email y contraseña para obtener el token JWT.
 
@@ -96,7 +96,7 @@ Usa el token como: `Authorization: Bearer eyJhbGci...`
 
 ---
 
-### 3.3 GET /whoami — Ver mi información actual
+### 3.3 GET /whoami - Ver mi información actual
 
 **¿Para qué sirve?** Verificar que tu token es válido y ver tu perfil con roles activos.
 
@@ -120,7 +120,7 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/whoami' \
 
 ---
 
-### 3.4 GET /token/remaining — ¿Cuánto tiempo le queda a mi token?
+### 3.4 GET /token/remaining - ¿Cuánto tiempo le queda a mi token?
 
 **¿Para qué sirve?** Consultar cuántos segundos le quedan al token antes de expirar.
 
@@ -144,7 +144,7 @@ curl -X GET 'https://lsg.diinf.usach.cl/lsg-auth/token/remaining' \
 
 ---
 
-### 3.5 POST /token/refresh — Renovar token sin hacer login
+### 3.5 POST /token/refresh - Renovar token sin hacer login
 
 **¿Para qué sirve?** Generar un nuevo token usando el token actual vigente, sin ingresar credenciales. Los roles se actualizan automáticamente desde la BD.
 
@@ -172,7 +172,7 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/token/refresh' \
 
 ---
 
-### 3.6 POST /players — Crear nuevo usuario (solo admin)
+### 3.6 POST /players - Crear nuevo usuario (solo admin)
 
 **¿Para qué sirve?** Crear una nueva cuenta de usuario. Solo administradores pueden hacerlo desde la API. El primer admin debe crearse desde la consola del servidor.
 
@@ -217,7 +217,7 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/players' \
 
 ---
 
-### 3.7 PATCH /admin/players/{id}/roles — Asignar o revocar un rol
+### 3.7 PATCH /admin/players/{id}/roles - Asignar o revocar un rol
 
 **¿Para qué sirve?** Cambiar los roles de un jugador: agregar (`grant`) o quitar (`revoke`). Un jugador puede tener múltiples roles activos.
 
@@ -247,7 +247,7 @@ curl -X PATCH 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/57/roles' \
 
 ---
 
-### 3.8 GET /admin/players/{id}/roles — Ver historial de roles
+### 3.8 GET /admin/players/{id}/roles - Ver historial de roles
 
 **¿Para qué sirve?** Consultar todos los roles (activos e históricos) de un jugador.
 
