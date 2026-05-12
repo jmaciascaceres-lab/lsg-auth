@@ -552,6 +552,8 @@ def change_player_password(
     current_admin: models.Player = Depends(require_roles(["admin"])),
 ):
     """
+    # PATCH /admin/players/{player_id}/password
+
     Cambia la contraseña de cualquier jugador del sistema.
 
     La nueva contraseña se hashea con **bcrypt** antes de almacenarse.
