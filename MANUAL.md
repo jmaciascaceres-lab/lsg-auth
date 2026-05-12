@@ -26,6 +26,7 @@ Cada usuario tiene uno o más roles que determinan a qué puede acceder:
 | `teacher` | Leer datos de todos los jugadores y analíticas |
 | `researcher` | Todo lo de teacher + ajustar puntos y exportar datos FONDECYT |
 | `admin` | Acceso completo al sistema |
+| `developer` | Desarrollar mods para el sistema |
 
 ---
 
@@ -224,7 +225,7 @@ curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/players' \
 
 | Campo | Valores | Descripción |
 |-------|---------|-------------|
-| `role` | `player`, `teacher`, `researcher`, `admin` | Rol a modificar |
+| `role` | `player`, `teacher`, `researcher`, `admin`, `developer` | Rol a modificar |
 | `action` | `grant`, `revoke` | `grant` agrega, `revoke` quita |
 
 ```bash

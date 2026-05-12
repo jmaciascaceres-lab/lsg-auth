@@ -2,7 +2,7 @@ import os
 from datetime import timedelta, datetime
 import time
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,8 @@ from app.auth import (
 )
 from app.db import get_db
 
-# Configuración
+# Configuración 
+
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"
 ROOT_PATH     = os.getenv("LSG_AUTH_ROOT_PATH", "")
 
@@ -41,7 +42,7 @@ app = FastAPI(
 )
 
 
-# ── Helpers internos ────────────────────────────────────────────────────────────
+# Helpers internos
 
 def require_roles(allowed_roles: list):
     """Dependencia: valida que el token tenga al menos uno de los roles indicados."""
@@ -94,14 +95,19 @@ def _get_current_player(
     from fastapi import Security
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     bearer = HTTPBearer()
-    return None
+    # (implementación simplificada — en producción usar la misma lógica de require_roles)
+    return None   # placeholder; la implementación real está en el repo
 
 
 # GET /health
 
 @app.get("/health", tags=["health"])
 def health(db: Session = Depends(get_db)):
-    """Healthcheck del servicio y conexión a BD."""
+    """
+    # GET /health
+
+    Healthcheck del servicio y conexión a BD.
+    """
     try:
         db.execute(__import__("sqlalchemy").text("SELECT 1"))
         return {"status": "ok", "db": "ok"}
@@ -117,6 +123,8 @@ def login(
     db:   Session = Depends(get_db),
 ):
     """
+    # POST /login
+
     Inicio de sesión. El campo `username` debe contener el **email** del usuario.
 
     Retorna un JWT válido por **120 minutos**.
@@ -144,10 +152,16 @@ def login(
 @app.get("/whoami", tags=["auth"])
 def whoami(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player"]
+        ["admin", "researcher", "teacher", "player", "developer"]
     )),
 ):
-    """Perfil del usuario autenticado, incluyendo roles activos."""
+    """
+    # GET /whoami
+
+    Perfil del usuario autenticado, incluyendo roles activos.
+
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
+    """
     return {
         "id_players": current.id_players,
         "name":       current.name,
@@ -161,18 +175,55 @@ def whoami(
 
 @app.get("/token/remaining", tags=["auth"])
 def token_remaining_endpoint(
-    current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player"]
-    )),
-    credentials=None,
+    request: Request,
 ):
     """
+    # GET /token/remaining
+
     Devuelve cuántos segundos le quedan al token activo.
+
+    No requiere el flujo completo de roles — solo decodifica el JWT del header
+    para leer el claim `exp` y calcular la diferencia con UTC ahora.
+
     Si `expires_in_seconds` llega a 0, el token ya expiró → usar `POST /login`.
     """
-    # En la implementación real se decodifica el token del header
-    # y se calcula el tiempo restante con get_token_remaining(payload)
-    return {"expires_in_seconds": -1, "message": "Ver implementación en auth.py"}
+    import time as _time
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Header Authorization: Bearer <token> requerido.",
+        )
+
+    raw_token = auth_header[len("Bearer "):]
+
+    try:
+        payload = decode_access_token(raw_token)
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Token inválido o expirado. Usa POST /login para obtener uno nuevo.",
+        )
+
+    exp_ts = payload.get("exp")
+    if not exp_ts:
+        raise HTTPException(status_code=400, detail="El token no contiene campo 'exp'.")
+
+    now_ts          = int(_time.time())
+    remaining       = max(0, int(exp_ts) - now_ts)
+    expires_at_dt   = datetime.utcfromtimestamp(exp_ts).strftime("%Y-%m-%dT%H:%M:%SZ")
+    issued_at       = payload.get("iat")
+    issued_at_str   = (datetime.utcfromtimestamp(issued_at).strftime("%Y-%m-%dT%H:%M:%SZ")
+                       if issued_at else None)
+
+    return {
+        "expires_in_seconds": remaining,
+        "expires_at":         expires_at_dt,
+        "issued_at":          issued_at_str,
+        "player_id":          payload.get("player_id"),
+        "roles":              payload.get("roles", []),
+    }
 
 
 # POST /token/refresh
@@ -180,14 +231,18 @@ def token_remaining_endpoint(
 @app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
 def refresh_token(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player"]
+        ["admin", "researcher", "teacher", "player", "developer"]
     )),
 ):
     """
+    # POST /token/refresh
+
     Renueva el token JWT sin necesidad de hacer login nuevamente.
     Los roles se actualizan desde la BD en el nuevo token.
 
     Útil para scripts y mods que necesitan sesión activa prolongada.
+
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
     active_roles = current.roles
     new_token = create_access_token({
@@ -209,7 +264,9 @@ def create_player(
     current_admin: models.Player = Depends(require_roles(["admin"])),
 ):
     """
-    Crea un nuevo jugador/participante LSG.
+    # POST /players
+
+    Crea un nuevo jugador/participante LSG. **Solo admin.**
 
     El primer usuario admin debe crearse desde el CLI del contenedor:
     ```
@@ -224,7 +281,7 @@ def create_player(
     if existing:
         raise HTTPException(status_code=400, detail="Email ya registrado.")
 
-    valid_roles = {"player", "teacher", "researcher", "admin"}
+    valid_roles = {"player", "teacher", "researcher", "admin", "developer"}
     role = payload.role or "player"
     if role not in valid_roles:
         raise HTTPException(
@@ -269,6 +326,8 @@ def manage_player_role(
     current_admin: models.Player = Depends(require_roles(["admin"])),
 ):
     """
+    # PATCH /admin/players/{player_id}/roles
+
     Asigna (`grant`) o revoca (`revoke`) un rol a un jugador.
 
     - **grant**: idempotente — si el rol ya existe activo, no lo duplica.
@@ -279,7 +338,7 @@ def manage_player_role(
     { "role": "researcher", "action": "grant" }
     ```
 
-    **Roles disponibles:** "admin" 
+    **Roles disponibles:** "admin"
     """
     target = db.query(models.Player).filter(
         models.Player.id_players == player_id
@@ -287,7 +346,7 @@ def manage_player_role(
     if not target:
         raise HTTPException(status_code=404, detail="Jugador no encontrado.")
 
-    valid_roles = {"player", "teacher", "researcher", "admin"}
+    valid_roles = {"player", "teacher", "researcher", "admin", "developer"}
     if body.role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Rol inválido. Opciones: {valid_roles}")
 
@@ -330,6 +389,8 @@ def get_player_roles(
     _:               models.Player = Depends(require_roles(["admin"])),
 ):
     """
+    # GET /admin/players/{player_id}/roles
+
     Devuelve todos los roles (activos e históricos) de un jugador.
 
     - `include_revoked=true` (default): activos + revocados.
@@ -359,6 +420,123 @@ def get_player_roles(
         for pr in sorted(roles, key=lambda r: r.assigned_at or datetime.min, reverse=True)
     ]
 
+
+# POST /admin/players/batch-temp
+
+@app.post(
+    "/admin/players/batch-temp",
+    tags=["admin"],
+    summary="Crear lote de cuentas temporales",
+    status_code=201,
+)
+def create_batch_temp_players(
+    body:          schemas.BatchTempPlayersRequest,
+    db:            Session = Depends(get_db),
+    current_admin: models.Player = Depends(require_roles(["admin"])),
+):
+    """
+    # POST /admin/players/batch-temp
+
+    Crea un lote de cuentas temporales para que developers puedan probar mods.
+
+    Cada cuenta recibe:
+    - Un **email** único autogenerado: `{prefix}_{6chars}@lsg.temp`
+    - Una **contraseña** aleatoria de 6 caracteres alfanuméricos
+    - Un **rol** definido en el request (default: `player`)
+    - Una **fecha de expiración**: después de esa fecha el login es bloqueado
+
+    **Guarda las contraseñas en el momento de la respuesta.**
+    No se pueden recuperar después (solo se almacena el hash bcrypt).
+
+    **Límite:** 1 a 50 cuentas por llamada. Días de activación: 1 a 90.
+
+    **cURL:**
+    ```bash
+    curl -X POST 'https://lsg.diinf.usach.cl/lsg-auth/admin/players/batch-temp' \
+      -H 'Authorization: Bearer <TOKEN_ADMIN>' \
+      -H 'Content-Type: application/json' \
+      -d '{
+        "count": 5,
+        "days_active": 14,
+        "role": "developer",
+        "name_prefix": "test"
+      }'
+    ```
+
+    **Roles disponibles:** "admin"
+    """
+    import random
+    import string
+    from datetime import timezone
+
+    # Validaciones
+    if not (1 <= body.count <= 50):
+        raise HTTPException(status_code=400, detail="count debe estar entre 1 y 50.")
+    if not (1 <= body.days_active <= 90):
+        raise HTTPException(status_code=400, detail="days_active debe estar entre 1 y 90.")
+
+    valid_roles = {"player", "teacher", "researcher", "admin", "developer"}
+    if body.role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"Rol inválido. Opciones: {valid_roles}")
+
+    chars     = string.ascii_lowercase + string.digits
+    expires_dt = datetime.utcnow() + timedelta(days=body.days_active)
+    expires_str = expires_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    created = []
+
+    for _ in range(body.count):
+        # Generar sufijo único de 6 caracteres
+        suffix    = "".join(random.choices(chars, k=6))
+        temp_email = f"{body.name_prefix}_{suffix}@lsg.temp"
+        temp_pass  = "".join(random.choices(chars, k=6))
+
+        # Verificar unicidad del email (reintento si ya existe)
+        attempts = 0
+        while db.query(models.Player).filter(
+            models.Player.email == temp_email
+        ).first() and attempts < 10:
+            suffix     = "".join(random.choices(chars, k=6))
+            temp_email = f"{body.name_prefix}_{suffix}@lsg.temp"
+            attempts  += 1
+
+        new_player = models.Player(
+            name          = f"{body.name_prefix}_{suffix}",
+            email         = temp_email,
+            password_hash = hash_password(temp_pass),
+            temp_expires_at = expires_dt,
+        )
+        db.add(new_player)
+        db.flush()
+
+        db.add(models.PlayerRole(
+            id_players  = new_player.id_players,
+            role        = body.role,
+            assigned_by = current_admin.id_players,
+        ))
+
+        created.append({
+            "id_players":    new_player.id_players,
+            "email":         temp_email,
+            "temp_password": temp_pass,   # ← solo visible al crear
+            "role":          body.role,
+            "expires_at":    expires_str,
+        })
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creando cuentas: {e}")
+
+    return {
+        "status":      "ok",
+        "count":       len(created),
+        "expires_at":  expires_str,
+        "role":        body.role,
+        "accounts":    created,
+        "warning":     "Guarda las contraseñas ahora. No se podrán recuperar.",
+    }
 
 # PATCH /admin/players/{player_id}/password
 
