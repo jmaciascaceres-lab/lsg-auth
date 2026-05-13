@@ -107,8 +107,6 @@ def health(db: Session = Depends(get_db)):
     # GET /health
 
     Healthcheck del servicio y conexión a BD.
-    
-    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     try:
         db.execute(__import__("sqlalchemy").text("SELECT 1"))
@@ -281,14 +279,14 @@ def create_player(
     """
     # POST /players
 
-    Crea un nuevo jugador/participante LSG. **Solo admin.**
+    Crea un nuevo jugador/participante LSG. 
 
     El primer usuario admin debe crearse desde el CLI del contenedor:
     ```
     docker compose exec app python -m app.cli_create_user --email admin@lsg.cl --role admin
     ```
 
-    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
+    **Roles disponibles:** "admin"
     """
     existing = db.query(models.Player).filter(
         models.Player.email == payload.email
