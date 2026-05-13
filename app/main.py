@@ -30,7 +30,7 @@ Gestiona jugadores, roles y tokens JWT para el ecosistema LifeSync-Games.
 2. Úsalo en LSG-Core-API: botón **Authorize** → `Bearer <token>`
 3. El token expira en **120 minutos**. Renuévalo con `POST /token/refresh`.
 
-**Roles:** `player` | `teacher` | `researcher` | `admin`
+**Roles:** `player` | `teacher` | `researcher` | `admin` | `developer`
 """
 
 app = FastAPI(
@@ -129,7 +129,7 @@ def login(
 
     Retorna un JWT válido por **120 minutos**.
     
-    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
     player = db.query(models.Player).filter(
         models.Player.email == form.username
@@ -165,7 +165,7 @@ def login(
 @app.get("/whoami", tags=["auth"])
 def whoami(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player"]
+        ["admin", "researcher", "teacher", "player", "developer"]
     )),
 ):
     """
@@ -173,7 +173,7 @@ def whoami(
 
     Perfil del usuario autenticado, incluyendo roles activos.
     
-    **Roles disponibles:** "admin", "researcher", "teacher", "student"
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
     return {
         "id_players": current.id_players,
@@ -200,7 +200,7 @@ def token_remaining_endpoint(
 
     Si `expires_in_seconds` llega a 0, el token ya expiró → usar `POST /login`.
 
-    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
     import time as _time
 
@@ -244,7 +244,7 @@ def token_remaining_endpoint(
 @app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
 def refresh_token(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player"]
+        ["admin", "researcher", "teacher", "player", "developer"]
     )),
 ):
     """
@@ -255,7 +255,7 @@ def refresh_token(
 
     Útil para scripts y mods que necesitan sesión activa prolongada.
 
-    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
+    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
     active_roles = current.roles
     new_token = create_access_token({
