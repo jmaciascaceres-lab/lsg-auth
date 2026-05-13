@@ -254,6 +254,10 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Changelog
 
+### v1.2.0.1 (2026-05-13)
+
+- Roles expandidos a "player" y "developer" para que puedan usar la API.
+
 ### v1.2.0 (2026-05-13)
 
 **Nuevos endpoints:**
