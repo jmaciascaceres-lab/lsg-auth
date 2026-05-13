@@ -2,8 +2,7 @@ import os
 from datetime import timedelta, datetime
 import time
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -17,10 +16,7 @@ from app.auth import (
 )
 from app.db import get_db
 
-# Configuración 
-
-_bearer_scheme = HTTPBearer(auto_error=False)
-
+# Configuración
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"
 ROOT_PATH     = os.getenv("LSG_AUTH_ROOT_PATH", "")
 
@@ -35,11 +31,6 @@ Gestiona jugadores, roles y tokens JWT para el ecosistema LifeSync-Games.
 3. El token expira en **120 minutos**. Renuévalo con `POST /token/refresh`.
 
 **Roles:** `player` | `teacher` | `researcher` | `admin`
-
-Fuente:
-- R. González-Ibáñez, J. I. Macías-Cáceres and M. V. Paucar, "LifeSync-Games: A Technical Note on a Novel Framework for Video Game Development," 2025 44th International Conference of the Chilean Computer Science Society (SCCC), Valparaiso, Chile, 2025, pp. 1-4, doi: 10.1109/SCCC67219.2025.11420722.
-- González-Ibáñez R., Macías-Cáceres J., Villalta-Paucar M. (2025). *LifeSync-Games: Toward a Video Game Paradigm for Promoting Responsible Gaming and Human Development*. arXiv:2510.19691 [cs.HC]. DOI: https://arxiv.org/abs/2510.19691
-
 """
 
 app = FastAPI(
@@ -48,7 +39,6 @@ app = FastAPI(
     root_path   = ROOT_PATH,
     description = AUTH_DOCS_DESCRIPTION,
 )
-
 
 # Helpers internos
 
@@ -103,7 +93,7 @@ def _get_current_player(
     from fastapi import Security
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     bearer = HTTPBearer()
-    # (implementación simplificada - en producción usar la misma lógica de require_roles)
+    # (implementación simplificada — en producción usar la misma lógica de require_roles)
     return None   # placeholder; la implementación real está en el repo
 
 
@@ -115,6 +105,8 @@ def health(db: Session = Depends(get_db)):
     # GET /health
 
     Healthcheck del servicio y conexión a BD.
+    
+    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     try:
         db.execute(__import__("sqlalchemy").text("SELECT 1"))
@@ -136,6 +128,8 @@ def login(
     Inicio de sesión. El campo `username` debe contener el **email** del usuario.
 
     Retorna un JWT válido por **120 minutos**.
+    
+    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     player = db.query(models.Player).filter(
         models.Player.email == form.username
@@ -143,6 +137,17 @@ def login(
 
     if not player or not verify_password(form.password, player.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
+
+    # Verificar si es cuenta temporal expirada
+    if player.is_temp_expired:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code":    "TEMP_ACCOUNT_EXPIRED",
+                "message": "Tu cuenta temporal ha expirado. Contacta al administrador.",
+                "expired_at": str(player.temp_expires_at),
+            },
+        )
 
     active_roles = player.roles
     token = create_access_token({
@@ -160,15 +165,15 @@ def login(
 @app.get("/whoami", tags=["auth"])
 def whoami(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player", "developer"]
+        ["admin", "researcher", "teacher", "player"]
     )),
 ):
     """
     # GET /whoami
 
     Perfil del usuario autenticado, incluyendo roles activos.
-
-    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
+    
+    **Roles disponibles:** "admin", "researcher", "teacher", "student"
     """
     return {
         "id_players": current.id_players,
@@ -183,26 +188,30 @@ def whoami(
 
 @app.get("/token/remaining", tags=["auth"])
 def token_remaining_endpoint(
-    credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme),
+    request: Request,
 ):
     """
     # GET /token/remaining
 
     Devuelve cuántos segundos le quedan al token activo.
 
-    No requiere el flujo completo de roles - solo decodifica el JWT del header
+    No requiere el flujo completo de roles — solo decodifica el JWT del header
     para leer el claim `exp` y calcular la diferencia con UTC ahora.
 
     Si `expires_in_seconds` llega a 0, el token ya expiró → usar `POST /login`.
+
+    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     import time as _time
 
-    if not credentials:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=401,
             detail="Header Authorization: Bearer <token> requerido.",
         )
-    raw_token = credentials.credentials
+
+    raw_token = auth_header[len("Bearer "):]
 
     try:
         payload = decode_access_token(raw_token)
@@ -237,7 +246,7 @@ def token_remaining_endpoint(
 @app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
 def refresh_token(
     current: models.Player = Depends(require_roles(
-        ["admin", "researcher", "teacher", "player", "developer"]
+        ["admin", "researcher", "teacher", "player"]
     )),
 ):
     """
@@ -248,7 +257,7 @@ def refresh_token(
 
     Útil para scripts y mods que necesitan sesión activa prolongada.
 
-    **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
+    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     active_roles = current.roles
     new_token = create_access_token({
@@ -279,7 +288,7 @@ def create_player(
     docker compose exec app python -m app.cli_create_user --email admin@lsg.cl --role admin
     ```
 
-    **Roles disponibles:** "admin"
+    **Roles disponibles:** "admin", "researcher", "teacher", "student", "developer"
     """
     existing = db.query(models.Player).filter(
         models.Player.email == payload.email
@@ -324,7 +333,7 @@ def create_player(
 # PATCH /admin/players/{player_id}/roles
 
 @app.patch("/admin/players/{player_id}/roles", tags=["admin"],
-           summary="Asignar o revocar rol a un jugador")
+           summary="Asignar o revocar rol a un jugador ")
 def manage_player_role(
     player_id:     int,
     body:          schemas.RoleAssignRequest,
@@ -336,7 +345,7 @@ def manage_player_role(
 
     Asigna (`grant`) o revoca (`revoke`) un rol a un jugador.
 
-    - **grant**: idempotente - si el rol ya existe activo, no lo duplica.
+    - **grant**: idempotente — si el rol ya existe activo, no lo duplica.
     - **revoke**: marca `revoked_at = NOW()`, no borra el historial.
 
     Ejemplo:
@@ -427,7 +436,7 @@ def get_player_roles(
     ]
 
 
-# POST /admin/players/batch-temp
+# POST /admin/players/batch-temp — Cuentas temporales para developers
 
 @app.post(
     "/admin/players/batch-temp",
@@ -543,6 +552,7 @@ def create_batch_temp_players(
         "accounts":    created,
         "warning":     "Guarda las contraseñas ahora. No se podrán recuperar.",
     }
+
 
 # PATCH /admin/players/{player_id}/password
 
