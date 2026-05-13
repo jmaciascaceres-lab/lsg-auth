@@ -2,8 +2,8 @@ import os
 from datetime import timedelta, datetime
 import time
 
-from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, HTTPException, Request, Security
+from fastapi.security import OAuth2PasswordRequestForm, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -39,6 +39,8 @@ app = FastAPI(
     root_path   = ROOT_PATH,
     description = AUTH_DOCS_DESCRIPTION,
 )
+
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 # Helpers internos
 
@@ -188,7 +190,7 @@ def whoami(
 
 @app.get("/token/remaining", tags=["auth"])
 def token_remaining_endpoint(
-    request: Request,
+    credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme),
 ):
     """
     # GET /token/remaining
@@ -204,14 +206,12 @@ def token_remaining_endpoint(
     """
     import time as _time
 
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    if not credentials:
         raise HTTPException(
             status_code=401,
             detail="Header Authorization: Bearer <token> requerido.",
         )
-
-    raw_token = auth_header[len("Bearer "):]
+    raw_token = credentials.credentials  # ya viene sin "Bearer "
 
     try:
         payload = decode_access_token(raw_token)
