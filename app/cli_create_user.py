@@ -5,7 +5,7 @@ from .db import SessionLocal, Base, engine
 from . import models
 from .auth import hash_password
 
-VALID_ROLES = {"player", "teacher", "researcher", "admin"}
+VALID_ROLES = {"player", "teacher", "researcher", "admin", "developer"}
 
 
 def create_player_cli(
