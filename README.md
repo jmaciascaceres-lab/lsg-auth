@@ -2,7 +2,7 @@
 
 Servicio de autenticación JWT para el ecosistema LifeSync-Games (LSG), basado en **FastAPI**, **MySQL** y **JWT**.
 
-**Versión:** 1.1.1 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
+**Versión:** 1.2.0 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
 
 Provee:
 - Gestión de jugadores con contraseña hasheada con **bcrypt**.
@@ -48,9 +48,12 @@ lsg-auth/
 | `POST` | `/login`  | - | Login OAuth2 → JWT (120 min) |
 | `GET`  | `/whoami` | cualquiera | Perfil + roles del token activo |
 | `GET`  | `/token/remaining` | cualquiera | Segundos restantes del JWT activo |
+| `POST` | `/token/refresh` | cualquiera | Renovar token sin re-login (roles actualizados) |
 | `POST` | `/players` | `admin` | Crear jugador con rol inicial |
+| `POST` | `/admin/players/batch-temp` | `admin` | Crear lote de cuentas temporales (1-50) |
 | `PATCH`| `/admin/players/{id}/roles` | `admin` | Asignar (`grant`) o revocar (`revoke`) rol |
 | `GET`  | `/admin/players/{id}/roles` | `admin` | Historial de roles (activos + revocados) |
+| `PATCH`| `/admin/players/{id}/password` | `admin` | Cambiar contraseña de cualquier jugador |
 
 > **Nota:** La creación del primer usuario admin debe hacerse desde el CLI del contenedor (ver sección [Bootstrap](#crear-el-primer-admin-bootstrap)). El endpoint `POST /players` requiere un token admin activo.
 
@@ -66,6 +69,7 @@ El JWT emite el claim `"roles": ["player", "researcher"]` (lista, no string sing
 | `player` | Visualización y uso de servicios propios únicamente |
 | `teacher` | Lectura de todos los jugadores y analíticas |
 | `researcher` | Todo lo de teacher + edición, exportación e IC² ajeno |
+| `developer` | Integración de mods: crear juegos, mecánicas y vincularlas |
 | `admin` | Acceso completo incluyendo configuración del sistema |
 
 ---
@@ -82,8 +86,9 @@ CREATE TABLE players (
   age           INT,
   external_type VARCHAR(16),
   external_id   VARCHAR(128),
-  updated_at    TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at      TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  temp_expires_at TIMESTAMP NULL DEFAULT NULL  -- NULL = permanente; fecha = cuenta temporal
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tabla player_roles (multi-rol, historial con revocación)
@@ -94,7 +99,7 @@ CREATE TABLE player_roles (
   assigned_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   assigned_by    INT NULL,           -- id_players del admin asignador (NULL = CLI bootstrap)
   revoked_at     TIMESTAMP NULL,     -- NULL = rol activo; timestamp = rol revocado
-  CONSTRAINT chk_pr_role CHECK (role IN ('player','researcher','admin','teacher')),
+  CONSTRAINT chk_pr_role CHECK (role IN ('player','researcher','admin','teacher','developer')),
   FOREIGN KEY (id_players) REFERENCES players(id_players)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
@@ -248,6 +253,27 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ---
 
 ## Changelog
+
+### v1.2.0 (2026-05-13)
+
+**Nuevos endpoints:**
+- `POST /token/refresh` - Renueva el JWT sin re-login; actualiza roles desde la BD.
+- `POST /admin/players/batch-temp` - Genera lote de cuentas temporales (1-50) con email `{prefix}_{6chars}@lsg.temp`, contraseña aleatoria de 6 chars y fecha de expiración configurable (1-90 días). Las contraseñas solo son visibles en la respuesta de creación.
+- `PATCH /admin/players/{id}/password` - Cambio de contraseña de cualquier jugador por el admin. Hasheo bcrypt automático.
+
+**Bugfixes y mejoras:**
+- `GET /token/remaining` - Corregido: retornaba `-1` (placeholder). Ahora decodifica el JWT real del header y calcula `exp - now()` correctamente.
+- `models.py` - Refactorización completa:
+  - Eliminada columna `role` obsoleta de `Player` (la BD ya la había eliminado en PATCH-01).
+  - Agregada columna `temp_expires_at` en `Player` para cuentas temporales.
+  - Nuevo modelo `PlayerRole` con relación `_roles` hacia `Player`.
+  - Nueva propiedad `Player.roles` (lista de roles activos, `revoked_at IS NULL`).
+  - Nueva propiedad `Player.is_temp_expired` para validar expiración en `POST /login`.
+  - `password_hash` corregido a `nullable=True` (la BD permite auth externa vía CHECK).
+- `POST /login` - Agrega verificación: si la cuenta temporal expiró (`temp_expires_at < NOW()`), retorna 401 con `"code": "TEMP_ACCOUNT_EXPIRED"`.
+- `schemas.py` - Nuevos schemas: `BatchTempPlayersRequest`, `TempPlayerOut`, `RoleAssignRequest`.
+- Rol `developer` incorporado al CHECK de `player_roles` (PATCH-09).
+- BD PATCH-09: columna `temp_expires_at` en `players`, vistas `v_temp_players_active` y `v_temp_players_expired`.
 
 ### v1.1.1 (2026-05-08)
 - **Bugfix:** agregada clase `RoleAssignRequest` a `schemas.py` (faltaba; causaba `AttributeError` en startup de uvicorn e impedía levantar el servicio).
