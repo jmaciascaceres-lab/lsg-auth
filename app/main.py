@@ -35,7 +35,7 @@ Gestiona jugadores, roles y tokens JWT para el ecosistema LifeSync-Games.
 
 app = FastAPI(
     title       = "LSG-Auth",
-    version     = "1.1.1",
+    version     = "1.2.0.1",
     root_path   = ROOT_PATH,
     description = AUTH_DOCS_DESCRIPTION,
 )

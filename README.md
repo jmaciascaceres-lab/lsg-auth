@@ -2,7 +2,7 @@
 
 Servicio de autenticación JWT para el ecosistema LifeSync-Games (LSG), basado en **FastAPI**, **MySQL** y **JWT**.
 
-**Versión:** 1.2.0 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
+**Versión:** 1.2.0.1 | **Swagger:** https://lsg.diinf.usach.cl/lsg-auth/docs
 
 Provee:
 - Gestión de jugadores con contraseña hasheada con **bcrypt**.
