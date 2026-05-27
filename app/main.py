@@ -117,16 +117,16 @@ def health(db: Session = Depends(get_db)):
 
 # POST /login
 
-@app.post("/login", response_model=schemas.Token, tags=["auth"])
+@app.post("/login", response_model=schemas.TokenWithPlayer, tags=["auth"])
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db:   Session = Depends(get_db),
 ):
     """
     # POST /login
-
+ 
     Inicio de sesión. El campo `username` debe contener el **email** del usuario.
-
+ 
     Retorna un JWT válido por **120 minutos**.
     
     **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
@@ -134,10 +134,10 @@ def login(
     player = db.query(models.Player).filter(
         models.Player.email == form.username
     ).first()
-
+ 
     if not player or not verify_password(form.password, player.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
-
+ 
     # Verificar si es cuenta temporal expirada
     if player.is_temp_expired:
         raise HTTPException(
@@ -148,7 +148,7 @@ def login(
                 "expired_at": str(player.temp_expires_at),
             },
         )
-
+ 
     active_roles = player.roles
     token = create_access_token({
         "sub":       str(player.id_players),
@@ -157,8 +157,29 @@ def login(
         "roles":     active_roles,
         "type":      "user",
     })
-    return schemas.Token(access_token=token)
-
+    # Calcular expires_at desde el token ya firmado
+    import time as _time
+    from datetime import timezone as _tz
+    from jose import jwt as _jwt
+    _payload = _jwt.decode(
+        token, JWT_SECRET_KEY,
+        algorithms=[AUTH_JWT_ALGORITHM],
+        options={"verify_aud": False, "verify_iss": False},
+    )
+    _exp_ts   = _payload.get("exp", 0)
+    _expires  = datetime.fromtimestamp(_exp_ts, tz=_tz.utc).isoformat()
+ 
+    return schemas.TokenWithPlayer(
+        access_token = token,
+        expires_at   = _expires,
+        player       = schemas.PlayerInfo(
+            id_players = player.id_players,
+            name       = player.name,
+            email      = player.email,
+            age        = player.age,
+            roles      = active_roles,
+        ),
+    )
 
 # GET /whoami
 
