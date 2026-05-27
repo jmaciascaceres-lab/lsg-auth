@@ -59,25 +59,3 @@ class BatchTempPlayersRequest(BaseModel):
     days_active: int = 7    # días de activación desde la creación
     role:       str = "player"   # rol asignado a todas las cuentas
     name_prefix: str = "test"    # prefijo del nombre: test_a1b2, test_x9y3...
-
-
-class PlayerInfo(BaseModel):
-    """Datos básicos del jugador incluidos en la respuesta del login."""
-    id_players: int
-    name:       str
-    email:      str
-    age:        Optional[int] = None
-    roles:      list = []
-    model_config = {"from_attributes": True}
- 
- 
-class TokenWithPlayer(BaseModel):
-    """
-    Respuesta enriquecida de POST /login.
-    Incluye el token y los datos del jugador, eliminando la necesidad
-    de llamar a GET /whoami después del login.
-    """
-    access_token: str
-    token_type:   str = "bearer"
-    expires_at:   Optional[str] = None
-    player:       PlayerInfo

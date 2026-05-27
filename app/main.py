@@ -117,27 +117,48 @@ def health(db: Session = Depends(get_db)):
 
 # POST /login
 
-@app.post("/login", response_model=schemas.TokenWithPlayer, tags=["auth"])
+@app.post("/login", tags=["auth"])
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db:   Session = Depends(get_db),
 ):
     """
     # POST /login
- 
+
     Inicio de sesión. El campo `username` debe contener el **email** del usuario.
- 
-    Retorna un JWT válido por **120 minutos**.
-    
+
+    Retorna el JWT (válido **120 minutos**) junto con el perfil básico del jugador,
+    eliminando la necesidad de un `GET /whoami` adicional tras el login.
+
+    **Respuesta:**
+    ```json
+    {
+      "access_token": "eyJ...",
+      "token_type": "bearer",
+      "expires_in_seconds": 7200,
+      "expires_at": "2026-05-20T14:30:00+00:00",
+      "player": {
+        "id_players": 50,
+        "name": "irojas",
+        "email": "isidora.rojas.a@usach.cl",
+        "age": 30,
+        "roles": ["developer", "player"]
+      }
+    }
+    ```
+
     **Roles disponibles:** "admin", "researcher", "teacher", "player", "developer"
     """
+    import time as _time
+    from datetime import timezone as _tz
+
     player = db.query(models.Player).filter(
         models.Player.email == form.username
     ).first()
- 
+
     if not player or not verify_password(form.password, player.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
- 
+
     # Verificar si es cuenta temporal expirada
     if player.is_temp_expired:
         raise HTTPException(
@@ -148,7 +169,7 @@ def login(
                 "expired_at": str(player.temp_expires_at),
             },
         )
- 
+
     active_roles = player.roles
     token = create_access_token({
         "sub":       str(player.id_players),
@@ -157,29 +178,26 @@ def login(
         "roles":     active_roles,
         "type":      "user",
     })
-    # Calcular expires_at desde el token ya firmado
-    import time as _time
-    from datetime import timezone as _tz
-    from jose import jwt as _jwt
-    _payload = _jwt.decode(
-        token, JWT_SECRET_KEY,
-        algorithms=[AUTH_JWT_ALGORITHM],
-        options={"verify_aud": False, "verify_iss": False},
-    )
-    _exp_ts   = _payload.get("exp", 0)
-    _expires  = datetime.fromtimestamp(_exp_ts, tz=_tz.utc).isoformat()
- 
-    return schemas.TokenWithPlayer(
-        access_token = token,
-        expires_at   = _expires,
-        player       = schemas.PlayerInfo(
-            id_players = player.id_players,
-            name       = player.name,
-            email      = player.email,
-            age        = player.age,
-            roles      = active_roles,
-        ),
-    )
+
+    # Calcular expires_at desde el token generado
+    decoded = decode_access_token(token)
+    exp_ts  = decoded.get("exp", 0)
+    now_ts  = int(_time.time())
+
+    return {
+        "access_token":     token,
+        "token_type":       "bearer",
+        "expires_in_seconds": max(0, exp_ts - now_ts),
+        "expires_at":       datetime.fromtimestamp(exp_ts, tz=_tz.utc).isoformat(),
+        "player": {
+            "id_players": player.id_players,
+            "name":       player.name,
+            "email":      player.email,
+            "age":        player.age,
+            "roles":      active_roles,
+        },
+    }
+
 
 # GET /whoami
 
@@ -286,7 +304,17 @@ def refresh_token(
         "roles":     active_roles,
         "type":      "user",
     })
-    return schemas.Token(access_token=new_token)
+    return {
+        "access_token": new_token,
+        "token_type":   "bearer",
+        "player": {
+            "id_players": current.id_players,
+            "name":       current.name,
+            "email":      current.email,
+            "age":        current.age,
+            "roles":      current.roles,
+        },
+    }
 
 
 # POST /players
