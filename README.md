@@ -254,11 +254,14 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Changelog
 
+### v1.2.0.3 (2026-05-28)
 
+- `POST /token/refresh` - Ahora entrega información sobre el token (expires_in_seconds, issued_at, expires_at).
 
 ### v1.2.0.2 (2026-05-27)
 
-- `POST /login` - Ahora entrega información sobre el token (expires_in_seconds), eliminando la necesidad de uso del GET /whoami.
+- `POST /login` - Ahora entrega información sobre el token (expires_in_seconds).
+- `GET /whoami` - Ahora entrega información adicional sobre el token (expires_in_seconds, issued_at, expires_at).
 
 ### v1.2.0.1 (2026-05-13)
 
