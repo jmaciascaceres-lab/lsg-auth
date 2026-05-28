@@ -254,6 +254,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Changelog
 
+
+
+### v1.2.0.2 (2026-05-27)
+
+- `POST /login` - Ahora entrega información sobre el token (expires_in_seconds), eliminando la necesidad de uso del GET /whoami.
+
 ### v1.2.0.1 (2026-05-13)
 
 - Roles expandidos a "player" y "developer" para que puedan usar la API.

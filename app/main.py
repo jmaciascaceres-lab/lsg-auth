@@ -304,9 +304,13 @@ def refresh_token(
         "roles":     active_roles,
         "type":      "user",
     })
+    # Reutiliza get_token_remaining para calcular expires_at/expires_in_seconds
+    timing = get_token_remaining(decode_access_token(new_token))
     return {
-        "access_token": new_token,
-        "token_type":   "bearer",
+        "access_token":       new_token,
+        "token_type":         "bearer",
+        "expires_in_seconds": timing["expires_in_seconds"],
+        "expires_at":         timing["expires_at"],
         "player": {
             "id_players": current.id_players,
             "name":       current.name,
