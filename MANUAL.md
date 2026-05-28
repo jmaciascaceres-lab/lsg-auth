@@ -2,7 +2,7 @@
 ## Servicio de Autenticación LifeSync-Games
 
 **URL del servicio:** https://lsg.diinf.usach.cl/lsg-auth/docs  
-**Versión:** 1.1.1 | **Proyecto:** LifeSync-Games - InTeractiOn Lab, USACH
+**Versión:** 1.2.0.3 | **Proyecto:** LifeSync-Games - InTeractiOn Lab, USACH
 
 ---
 
