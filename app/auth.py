@@ -54,8 +54,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     if expires_delta is None:
         expires_delta = timedelta(minutes=JWT_EXPIRE_MINUTES)
 
-    expire = datetime.utcnow() + expires_delta
-    to_encode.update({"exp": expire})
+    now = datetime.utcnow()
+    expire = now + expires_delta
+    to_encode.update({"exp": expire, "iat": now})
 
     if JWT_ISSUER:
         to_encode["iss"] = JWT_ISSUER

@@ -280,7 +280,7 @@ def token_remaining_endpoint(
 
 # POST /token/refresh
 
-@app.post("/token/refresh", response_model=schemas.Token, tags=["auth"])
+@app.post("/token/refresh", tags=["auth"])
 def refresh_token(
     current: models.Player = Depends(require_roles(
         ["admin", "researcher", "teacher", "player", "developer"]
